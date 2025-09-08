@@ -143,6 +143,11 @@ impl Default for Clicker {
                 advancedRunes: false,
             },
             current_tab: MenuTab::Clicking,
+            BuildingProgress: BuildingStuffProgress::ForgeFoundation,
+            Alloys: ForgeAlloys::Bronze,
+            Potions: AlchemyPotions::Health,
+            FireStages: ForgeFireStages::Kindling,
+            WaterfallStages: AlchemyWaterfallStages::Drip,
         }
     }
 }
@@ -229,41 +234,42 @@ impl Clicker {
         ui.heading(egui::RichText::new("Smithing Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Coins: {}", self.coins)).color(egui::Color32::WHITE));
         match self.BuildingProgress {
-            BuildingProgress::ForgeFoundation => {
+            BuildingStuffProgress::ForgeFoundation => {
                 if let Some(&metal) = self.advRunes.get("Metal Rune") {
                     if ui.add_enabled(metal >= 5, styled_button("Buy Upgrade 5 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 5;
                     }
                 }
             }
-            BuildingProgress::ForgeAnvil => {
+            BuildingStuffProgress::ForgeAnvil => {
                 if let Some(&metal) = self.advRunes.get("Metal Rune") {
                     if ui.add_enabled(metal >= 10, styled_button("Buy Upgrade 10 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 10;
                     }
                 }
             }
-            BuildingProgress::ForgeFireplace => {
+            BuildingStuffProgress::ForgeFireplace => {
                 if let Some(&metal) = self.advRunes.get("Metal Rune") {
                     if ui.add_enabled(metal >= 15, styled_button("Buy Upgrade 15 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 15;
                     }
                 }
             }
-            BuildingProgress::ForgeWalls => {
+            BuildingStuffProgress::ForgeWalls => {
                 if let Some(&metal) = self.advRunes.get("Metal Rune") {
                     if ui.add_enabled(metal >= 20, styled_button("Buy Upgrade 20 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 20;
                     }
                 }
             }
-            BuildingProgress::ForgeRoof => {
+            BuildingStuffProgress::ForgeRoof => {
                 if let Some(&metal) = self.advRunes.get("Metal Rune") {
                     if ui.add_enabled(metal >= 25, styled_button("Buy Upgrade 25 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 25;
                     }
                 }
             }
+            _ => {}
         }
         // Placeholder for smithing actions
 
