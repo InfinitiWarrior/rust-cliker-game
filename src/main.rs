@@ -27,6 +27,7 @@ enum MenuTab {
 }
 
 struct Clicker {
+    unlocks: Unlocks,
     essence: u32,
     coins: u32,
     souls: u32,
@@ -36,8 +37,8 @@ struct Clicker {
     current_tab: MenuTab,
 }
 
-struct unlocks {
-    runeOnClick: u32,
+struct Unlocks {
+    advancedRunes: bool,
 }
 
 impl Default for Clicker {
@@ -53,6 +54,9 @@ impl Default for Clicker {
             essenceAmount: 1,
             runeChance: 50,
             runes,
+            unlocks: Unlocks {
+                advancedRunes: false,
+            },
             current_tab: MenuTab::Clicking,
         }
     }
@@ -82,7 +86,7 @@ impl Clicker {
     fn show_clicking(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Clicking Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Essence: {}", self.essence)).color(egui::Color32::WHITE));
-
+        ui.label(egui::RichText::new(format!("Souls: {}", self.souls)).color(egui::Color32::WHITE));
         // Display runes
         ui.horizontal(|ui| {
             for (rune, amount) in &self.runes {
@@ -102,6 +106,32 @@ impl Clicker {
                 *self.runes.get_mut(chosen.as_str()).unwrap() += 1;
             }
         }
+        ui.horizontal(|ui| {
+            if let Some(&fire) = self.runes.get("Fire Rune") {
+                if ui.add_enabled(fire >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Plasma")).clicked() {
+                    *self.runes.get_mut("Fire Rune").unwrap() -= 5;
+                    self.souls += 1;
+                }
+            }
+            if let Some(&air) = self.runes.get("Air Rune") {
+                if ui.add_enabled(air >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Gust")).clicked() {
+                    *self.runes.get_mut("Air Rune").unwrap() -= 5;
+                    self.souls += 1;
+                }
+            }
+            if let Some(&earth) = self.runes.get("Earth Rune") {
+                if ui.add_enabled(earth >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Metal")).clicked() {
+                    *self.runes.get_mut("earth Rune").unwrap() -= 5;
+                    self.souls += 1;
+                }
+            }
+            if let Some(&water) = self.runes.get("Water Rune") {
+                if ui.add_enabled(water >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Mist")).clicked() {
+                    *self.runes.get_mut("Water Rune").unwrap() -= 5;
+                    self.souls += 1;
+                }
+            }
+        });
     }
 
     fn show_smithing(&mut self, ui: &mut egui::Ui) {
@@ -129,9 +159,9 @@ impl Clicker {
         ui.label(egui::RichText::new("Turn in runes for rewards.").color(egui::Color32::WHITE));
 
         if let Some(&fire) = self.runes.get("Fire Rune") {
-            if ui.add_enabled(fire >= 10, styled_button("Turn in 10 Fire Runes")).clicked() {
+            if ui.add_enabled(fire >= 10 && self.unlocks.advancedRunes == false, styled_button("Turn in 10 Fire Runes")).clicked() {
                 *self.runes.get_mut("Fire Rune").unwrap() -= 10;
-                self.souls += 1;
+                self.unlocks.advancedRunes = true;
             }
         }
     }
