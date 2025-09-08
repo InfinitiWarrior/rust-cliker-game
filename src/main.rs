@@ -30,8 +30,14 @@ struct Clicker {
     essence: u32,
     coins: u32,
     souls: u32,
+    essenceAmount: u32,
+    runeChance: u32,
     runes: HashMap<String, u32>,
     current_tab: MenuTab,
+}
+
+struct unlocks {
+    runeOnClick: u32,
 }
 
 impl Default for Clicker {
@@ -44,6 +50,8 @@ impl Default for Clicker {
             essence: 0,
             coins: 0,
             souls: 0,
+            essenceAmount: 1,
+            runeChance: 50,
             runes,
             current_tab: MenuTab::Clicking,
         }
@@ -52,7 +60,9 @@ impl Default for Clicker {
 
 // Helper function for main action buttons
 fn styled_button(label: &str) -> egui::Button {
-    egui::Button::new(label)
+    egui::Button::new(
+        egui::RichText::new(label).color(egui::Color32::BLACK)
+    )
         .fill(egui::Color32::WHITE)
         .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK))
         .min_size([150.0, 50.0].into())
@@ -60,7 +70,9 @@ fn styled_button(label: &str) -> egui::Button {
 
 // Helper function for tab buttons (slightly smaller)
 fn styled_tab(label: &str) -> egui::Button {
-    egui::Button::new(label)
+    egui::Button::new(
+        egui::RichText::new(label).color(egui::Color32::BLACK)
+    )
         .fill(egui::Color32::WHITE)
         .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK))
         .min_size([120.0, 40.0].into())
@@ -68,23 +80,23 @@ fn styled_tab(label: &str) -> egui::Button {
 
 impl Clicker {
     fn show_clicking(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Clicking Menu");
-        ui.label(format!("Essence: {}", self.essence));
+        ui.heading(egui::RichText::new("Clicking Menu").color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new(format!("Essence: {}", self.essence)).color(egui::Color32::WHITE));
 
         // Display runes
         ui.horizontal(|ui| {
             for (rune, amount) in &self.runes {
-                ui.label(format!("{}: {}", rune, amount));
+                ui.label(egui::RichText::new(format!("{}: {}", rune, amount)).color(egui::Color32::WHITE));
             }
         });
 
         // Clicking button
         if ui.add(styled_button("Conjure resources")).clicked() {
-            self.essence += 1;
+            self.essence += self.essenceAmount;
 
             let mut rng = rand::thread_rng();
 
-            if rng.gen_range(0..100) < 50 {
+            if rng.gen_range(0..100) < self.runeChance {
                 let keys: Vec<String> = self.runes.keys().cloned().collect();
                 let chosen = &keys[rng.gen_range(0..keys.len())];
                 *self.runes.get_mut(chosen.as_str()).unwrap() += 1;
@@ -93,8 +105,8 @@ impl Clicker {
     }
 
     fn show_smithing(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Smithing Menu");
-        ui.label(format!("Coins: {}", self.coins));
+        ui.heading(egui::RichText::new("Smithing Menu").color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new(format!("Coins: {}", self.coins)).color(egui::Color32::WHITE));
 
         if ui.add_enabled(self.coins >= 10, styled_button("Buy Upgrade (10 coins)")).clicked() {
             self.coins -= 10;
@@ -103,13 +115,18 @@ impl Clicker {
     }
 
     fn show_upgrades(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Upgrades Menu");
-        ui.label("Purchase upgrades to enhance clicks or crafting.");
+        ui.heading(egui::RichText::new("Upgrades Menu").color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new("Purchase upgrades to enhance clicks or crafting.").color(egui::Color32::WHITE));
+
+        if ui.add_enabled(self.essence >= 30, styled_button("Buy Upgrade (30 essence)")).clicked() {
+            self.essence -= 30;
+            self.essenceAmount += 1;
+        }
     }
 
     fn show_quests(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Quests Menu");
-        ui.label("Turn in runes for rewards.");
+        ui.heading(egui::RichText::new("Quests Menu").color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new("Turn in runes for rewards.").color(egui::Color32::WHITE));
 
         if let Some(&fire) = self.runes.get("Fire Rune") {
             if ui.add_enabled(fire >= 10, styled_button("Turn in 10 Fire Runes")).clicked() {
