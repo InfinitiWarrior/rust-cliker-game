@@ -37,6 +37,50 @@ enum FirstQuest {
     Complete,
 }
 
+enum SecondQuest {
+    CollectWaterRunes,
+    CollectMistRunes,
+    Complete,
+}
+
+enum ForgeQuest {
+    BuildForge,
+    MakeBasicSword,
+    MakeBasicShield,
+    MakeAlloys,
+    MakeAdvancedSword,
+    MakeAdvancedShield,
+    Complete,
+}
+
+enum AlchemyQuest {
+    BuildAlchemyLab,
+    MakeHealthPotion,
+    MakeManaPotion,
+    MakeStaminaPotion,
+    MakeAdvancedPotions,
+    Complete,
+}
+
+enum ThirdQuest {
+    BuildShop,
+    SellBasicItems,
+    SellAdvancedItems,
+    Complete,
+}
+
+enum EnchantingQuest {
+    InfuseBasicItems,
+    InfuseAdvancedItems,
+    UpgradeInfusions,
+    Complete,
+}
+
+enum EquipmentQuest {
+    EquipBasicGear,
+    EquipAdvancedGear,
+    Complete,
+}
 
 enum BuildingStuffProgress {
     ForgeFoundation,
@@ -101,6 +145,7 @@ enum AlchemyWaterfallStages {
 struct Clicker {
     unlocks: Unlocks,
     essence: u32,
+    maxEssence: u32,
     coins: u32,
     souls: u32,
     advRunes: HashMap<String, u32>,
@@ -114,10 +159,20 @@ struct Clicker {
     FireStages: ForgeFireStages,
     WaterfallStages: AlchemyWaterfallStages,
     current_tab: MenuTab,
+    gatherQuest: SecondQuest,
+    forgeQuest: ForgeQuest,
+    alchemyQuest: AlchemyQuest,
+    shopQuest: ThirdQuest,
+    enchantingQuest: EnchantingQuest,
+    equipmentQuest: EquipmentQuest,
+    runeConversionAmount: u32,
 }
 
 struct Unlocks {
     advancedRunes: bool,
+    essenceConversion: bool,
+    forgingBasics: bool,
+    alchemyBasics: bool,
 }
 
 impl Default for Clicker {
@@ -132,15 +187,20 @@ impl Default for Clicker {
         }
         Self {
             essence: 0,
+            maxEssence: 50,
             coins: 0,
             souls: 0,
             essenceAmount: 1,
             runeChance: 50,
             runes,
             advRunes,
+            runeConversionAmount: 1,
             fireQuest: FirstQuest::CollectFireRunes,
             unlocks: Unlocks {
                 advancedRunes: false,
+                essenceConversion: false,
+                forgingBasics: false,
+                alchemyBasics: false,
             },
             current_tab: MenuTab::Clicking,
             BuildingProgress: BuildingStuffProgress::ForgeFoundation,
@@ -148,6 +208,12 @@ impl Default for Clicker {
             Potions: AlchemyPotions::Health,
             FireStages: ForgeFireStages::Kindling,
             WaterfallStages: AlchemyWaterfallStages::Drip,
+            gatherQuest: SecondQuest::CollectWaterRunes,
+            forgeQuest: ForgeQuest::BuildForge,
+            alchemyQuest: AlchemyQuest::BuildAlchemyLab,
+            shopQuest: ThirdQuest::BuildShop,
+            enchantingQuest: EnchantingQuest::InfuseBasicItems,
+            equipmentQuest: EquipmentQuest::EquipBasicGear,
         }
     }
 }
@@ -175,7 +241,7 @@ fn styled_tab(label: &str) -> egui::Button {
 impl Clicker {
     fn show_clicking(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Clicking Menu").color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Essence: {}", self.essence)).color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new(format!("Essence: {}/{}", self.essence, self.maxEssence)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Souls: {}", self.souls)).color(egui::Color32::WHITE));
         // Display runes
         ui.horizontal(|ui| {
@@ -193,7 +259,9 @@ impl Clicker {
         // Clicking button
         if ui.add(styled_button("Conjure resources")).clicked() {
             self.essence += self.essenceAmount;
-
+            if self.essence > self.maxEssence {
+                self.essence = self.maxEssence;
+            }
             let mut rng = rand::thread_rng();
 
             if rng.gen_range(0..100) < self.runeChance {
@@ -202,6 +270,32 @@ impl Clicker {
                 *self.runes.get_mut(chosen.as_str()).unwrap() += 1;
             }
         }
+        ui.horizontal(|ui| {
+            if let Some(&fire) = self.runes.get("Fire Rune") {
+                if ui.add_enabled(self.essence >= 50 && self.unlocks.essenceConversion == true, styled_button("Convert 50 Essence to Fire Rune")).clicked() {
+                    self.essence -= 10;
+                    *self.runes.get_mut("Fire Rune").unwrap() += self.runeConversionAmount;
+                }
+            }
+            if let Some(&water) = self.runes.get("Water Rune") {
+                if ui.add_enabled(self.essence >= 50 && self.unlocks.essenceConversion == true, styled_button("Convert 50 Essence to Water Rune")).clicked() {
+                    self.essence -= 10;
+                    *self.runes.get_mut("Water Rune").unwrap() += self.runeConversionAmount;
+                }
+            }
+            if let Some(&earth) = self.runes.get("Earth Rune") {
+                if ui.add_enabled(self.essence >= 50 && self.unlocks.essenceConversion == true, styled_button("Convert 50 Essence to Earth Rune")).clicked() {
+                    self.essence -= 10;
+                    *self.runes.get_mut("Earth Rune").unwrap() += self.runeConversionAmount;
+                }
+            }
+            if let Some(&air) = self.runes.get("Air Rune") {
+                if ui.add_enabled(self.essence >= 50 && self.unlocks.essenceConversion == true, styled_button("Convert 50 Essence to Air Rune")).clicked() {
+                    self.essence -= 10;
+                    *self.runes.get_mut("Air Rune").unwrap() += self.runeConversionAmount;
+                }
+            }
+        });
         ui.horizontal(|ui| {
             if let Some(&fire) = self.runes.get("Fire Rune") {
                 if ui.add_enabled(fire >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Plasma")).clicked() {
@@ -266,6 +360,7 @@ impl Clicker {
                 if let Some(&metal) = self.advRunes.get("Metal Rune") {
                     if ui.add_enabled(metal >= 25, styled_button("Buy Upgrade 25 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 25;
+                        self.unlocks.forgingBasics = true;
                     }
                 }
             }
@@ -280,9 +375,10 @@ impl Clicker {
         ui.heading(egui::RichText::new("Upgrades Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new("Purchase upgrades to enhance clicks or crafting.").color(egui::Color32::WHITE));
 
-        if ui.add_enabled(self.essence >= 30, styled_button("Buy Upgrade (30 essence)")).clicked() {
-            self.essence -= 30;
+        if ui.add_enabled(self.souls >= 1, styled_button("Buy Upgrade (1 soul)")).clicked() {
+            self.souls -= 1;
             self.essenceAmount += 1;
+            self.unlocks.essenceConversion = true;
         }
     }
 
@@ -296,15 +392,17 @@ impl Clicker {
                         *self.runes.get_mut("Fire Rune").unwrap() -= 10;
                         self.unlocks.advancedRunes = true;
                         self.fireQuest = FirstQuest::CollectPlasmaRunes;
+                        self.souls += 1;
                     }
                 } 
             }
             FirstQuest::CollectPlasmaRunes => {
                 if let Some(&plasma) = self.advRunes.get("Plasma Rune") {
-                    if ui.add_enabled(plasma >= 1, styled_button("Turn in 1 Plasma Runes")).clicked() {
-                        *self.advRunes.get_mut("Plasma Rune").unwrap() -= 1;
+                    if ui.add_enabled(plasma >= 3, styled_button("Turn in 3 Plasma Runes")).clicked() {
+                        *self.advRunes.get_mut("Plasma Rune").unwrap() -= 3;
                         self.runeChance = 150;
                         self.fireQuest = FirstQuest::Complete;
+                        self.souls += 1;
                     }
                 }
             }
