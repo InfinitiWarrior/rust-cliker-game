@@ -27,7 +27,6 @@ enum MenuTab {
     Equipment,
     Achievements,
     Settings,
-    Collections,
     StatBreakDown,
 }
 
@@ -258,10 +257,7 @@ impl Clicker {
 
         // Clicking button
         if ui.add(styled_button("Conjure resources")).clicked() {
-            self.essence += self.essenceAmount;
-            if self.essence > self.maxEssence {
-                self.essence = self.maxEssence;
-            }
+            self.essence = (self.essence + self.essenceAmount).min(self.maxEssence);
             let mut rng = rand::thread_rng();
 
             if rng.gen_range(0..100) < self.runeChance {
@@ -427,11 +423,6 @@ impl Clicker {
         ui.label(egui::RichText::new("Adjust your game settings here.").color(egui::Color32::WHITE));
         // Placeholder for settings adjustments
     }
-    fn show_collections(&mut self, ui: &mut egui::Ui) {
-        ui.heading(egui::RichText::new("Collections Menu").color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new("View your collections here.").color(egui::Color32::WHITE));
-        // Placeholder for collections viewing
-    }
     fn show_stat_breakdown(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Stat Break Down Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new("Detailed stats of your progress.").color(egui::Color32::WHITE));
@@ -466,9 +457,6 @@ impl eframe::App for Clicker {
                 if ui.add(styled_tab("Settings")).clicked() {
                     self.current_tab = MenuTab::Settings;
                 }
-                if ui.add(styled_tab("Collections")).clicked() {
-                    self.current_tab = MenuTab::Collections;
-                }
                 if ui.add(styled_tab("Stat Break Down")).clicked() {
                     self.current_tab = MenuTab::StatBreakDown;
                 }
@@ -485,7 +473,6 @@ impl eframe::App for Clicker {
                 MenuTab::Equipment => self.show_equipment(ui),
                 MenuTab::Achievements => self.show_achievements(ui),
                 MenuTab::Settings => self.show_settings(ui),
-                MenuTab::Collections => self.show_collections(ui),
                 MenuTab::StatBreakDown => self.show_stat_breakdown(ui),
             }
         });
