@@ -433,8 +433,24 @@ impl Clicker {
 
 impl eframe::App for Clicker {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let bg_color = match self.current_tab {
+            MenuTab::Clicking => egui::Color32::from_rgb(40, 40, 80),
+            MenuTab::Smithing => egui::Color32::from_rgb(60, 30, 30),
+            MenuTab::Upgrades => egui::Color32::from_rgb(30, 60, 30),
+            MenuTab::Quests => egui::Color32::from_rgb(50, 50, 50),
+            MenuTab::Equipment => egui::Color32::from_rgb(30, 30, 60),
+            MenuTab::Achievements => egui::Color32::from_rgb(80, 40, 40),
+            MenuTab::Settings => egui::Color32::from_rgb(50, 30, 70),
+            MenuTab::StatBreakDown => egui::Color32::from_rgb(30, 70, 30),
+        };
         // Top menu tabs
-        egui::TopBottomPanel::top("menu_panel").show(ctx, |ui| {
+        egui::TopBottomPanel::top("menu_panel")
+            .frame(
+                egui::Frame::default()
+                    .fill(egui::Color32::from_rgb(bg_color.r(), bg_color.g(), bg_color.b())) // Background color of the tab bar
+                    .inner_margin(egui::Margin::same(5)) // Optional padding
+            )
+            .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.add(styled_tab("Clicking")).clicked() {
                     self.current_tab = MenuTab::Clicking;
@@ -464,18 +480,23 @@ impl eframe::App for Clicker {
         });
 
         // Central panel content
-        egui::CentralPanel::default().show(ctx, |ui| {
-            match self.current_tab {
-                MenuTab::Clicking => self.show_clicking(ui),
-                MenuTab::Smithing => self.show_smithing(ui),
-                MenuTab::Upgrades => self.show_upgrades(ui),
-                MenuTab::Quests => self.show_quests(ui),
-                MenuTab::Equipment => self.show_equipment(ui),
-                MenuTab::Achievements => self.show_achievements(ui),
-                MenuTab::Settings => self.show_settings(ui),
-                MenuTab::StatBreakDown => self.show_stat_breakdown(ui),
-            }
-        });
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::default()
+                    .fill(egui::Color32::from_rgb(bg_color.r(), bg_color.g(), bg_color.b()))
+            )
+            .show(ctx, |ui| {
+                match self.current_tab {
+                    MenuTab::Clicking => self.show_clicking(ui),
+                    MenuTab::Smithing => self.show_smithing(ui),
+                    MenuTab::Upgrades => self.show_upgrades(ui),
+                    MenuTab::Quests => self.show_quests(ui),
+                    MenuTab::Equipment => self.show_equipment(ui),
+                    MenuTab::Achievements => self.show_achievements(ui),
+                    MenuTab::Settings => self.show_settings(ui),
+                    MenuTab::StatBreakDown => self.show_stat_breakdown(ui),
+                }
+            });
     }
 }
 
