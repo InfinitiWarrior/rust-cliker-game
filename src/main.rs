@@ -45,10 +45,10 @@ enum SecondQuest {
 enum ForgeQuest {
     BuildForge,
     MakeBasicSword,
-    MakeBasicShield,
+    MakeBasicRing,
     MakeAlloys,
     MakeAdvancedSword,
-    MakeAdvancedShield,
+    MakeAdvancedRing,
     Complete,
 }
 
@@ -94,17 +94,6 @@ enum BuildingStuffProgress {
     Complete,
 }
 
-enum ForgeAlloys {
-    Bronze,
-    Iron,
-    Steel,
-    Mithril,
-    Adamantite,
-    Runite,
-    Dragonite,
-    Complete,
-}
-
 enum AlchemyPotions {
     Health,
     Mana,
@@ -140,20 +129,31 @@ enum AlchemyWaterfallStages {
     Tsunami,
     Complete,
 }
-
+enum ForgeAlloys {
+    Bronze,
+    Iron,
+    Steel,
+    Mithril,
+    Adamantite,
+    Runite,
+    Dragonite,
+    Complete,
+}
 struct Clicker {
     unlocks: Unlocks,
     essence: u32,
     maxEssence: u32,
     coins: u32,
     souls: u32,
+    alloys: HashMap<String, u32>,
     advRunes: HashMap<String, u32>,
+    forgableSwords: HashMap<String, u32>,
+    forgableRings: HashMap<String, u32>,
     essenceAmount: u32,
     runeChance: u32,
     runes: HashMap<String, u32>,
     fireQuest: FirstQuest,
     BuildingProgress: BuildingStuffProgress,
-    Alloys: ForgeAlloys,
     Potions: AlchemyPotions,
     FireStages: ForgeFireStages,
     WaterfallStages: AlchemyWaterfallStages,
@@ -172,6 +172,7 @@ struct Unlocks {
     essenceConversion: bool,
     forgingBasics: bool,
     alchemyBasics: bool,
+    alloyForging: bool,
 }
 
 impl Default for Clicker {
@@ -184,6 +185,27 @@ impl Default for Clicker {
         for advRune in ["Plasma", "Mist", "Metal", "Gust"] {
             advRunes.insert(format!("{} Rune", advRune), 0);
         }
+        let mut forgableSwords = HashMap::new();
+        for sword in [
+            "Metal Sword", "Bronze Sword", "Iron Sword", "Steel Sword",
+            "Mithril Sword", "Adamantite Sword", "Runite Sword", "Dragonite Sword"
+        ] {
+            forgableSwords.insert(sword.to_string(), 0);
+        }
+        let mut forgableRings = HashMap::new();
+        for ring in [
+            "Metal Ring", "Bronze Ring", "Iron Ring", "Steel Ring",
+            "Mithril Ring", "Adamantite Ring", "Runite Ring", "Dragonite Ring"
+        ] {
+            forgableRings.insert(ring.to_string(), 0);
+        }
+        let mut alloys = HashMap::new();
+        for alloy in [
+            "Bronze", "Iron", "Steel", "Mithril",
+            "Adamantite", "Runite", "Dragonite"
+        ] {
+            alloys.insert(alloy.to_string(), 0);
+        }
         Self {
             essence: 0,
             maxEssence: 50,
@@ -193,6 +215,9 @@ impl Default for Clicker {
             runeChance: 50,
             runes,
             advRunes,
+            alloys,
+            forgableSwords,
+            forgableRings,
             runeConversionAmount: 1,
             fireQuest: FirstQuest::CollectFireRunes,
             unlocks: Unlocks {
@@ -200,10 +225,10 @@ impl Default for Clicker {
                 essenceConversion: false,
                 forgingBasics: false,
                 alchemyBasics: false,
+                alloyForging: false,
             },
             current_tab: MenuTab::Clicking,
             BuildingProgress: BuildingStuffProgress::ForgeFoundation,
-            Alloys: ForgeAlloys::Bronze,
             Potions: AlchemyPotions::Health,
             FireStages: ForgeFireStages::Kindling,
             WaterfallStages: AlchemyWaterfallStages::Drip,
@@ -269,25 +294,25 @@ impl Clicker {
         ui.horizontal(|ui| {
             if let Some(&fire) = self.runes.get("Fire Rune") {
                 if ui.add_enabled(self.essence >= 50 && self.unlocks.essenceConversion == true, styled_button("Convert 50 Essence to Fire Rune")).clicked() {
-                    self.essence -= 10;
+                    self.essence -= 50;
                     *self.runes.get_mut("Fire Rune").unwrap() += self.runeConversionAmount;
                 }
             }
             if let Some(&water) = self.runes.get("Water Rune") {
                 if ui.add_enabled(self.essence >= 50 && self.unlocks.essenceConversion == true, styled_button("Convert 50 Essence to Water Rune")).clicked() {
-                    self.essence -= 10;
+                    self.essence -= 50;
                     *self.runes.get_mut("Water Rune").unwrap() += self.runeConversionAmount;
                 }
             }
             if let Some(&earth) = self.runes.get("Earth Rune") {
                 if ui.add_enabled(self.essence >= 50 && self.unlocks.essenceConversion == true, styled_button("Convert 50 Essence to Earth Rune")).clicked() {
-                    self.essence -= 10;
+                    self.essence -= 50;
                     *self.runes.get_mut("Earth Rune").unwrap() += self.runeConversionAmount;
                 }
             }
             if let Some(&air) = self.runes.get("Air Rune") {
                 if ui.add_enabled(self.essence >= 50 && self.unlocks.essenceConversion == true, styled_button("Convert 50 Essence to Air Rune")).clicked() {
-                    self.essence -= 10;
+                    self.essence -= 50;
                     *self.runes.get_mut("Air Rune").unwrap() += self.runeConversionAmount;
                 }
             }
@@ -323,18 +348,234 @@ impl Clicker {
     fn show_smithing(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Smithing Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Coins: {}", self.coins)).color(egui::Color32::WHITE));
+
+            let metal_runes: u32 = *self.advRunes.get("Metal Rune").unwrap_or(&0);
+            let mist_runes: u32 = *self.advRunes.get("Mist Rune").unwrap_or(&0);
+            let plasma_runes: u32 = *self.advRunes.get("Plasma Rune").unwrap_or(&0);
+            let gust_runes: u32 = *self.advRunes.get("Gust Rune").unwrap_or(&0);
+            let bronze: u32 = *self.alloys.get("Bronze").unwrap_or(&0);
+            let iron: u32 = *self.alloys.get("Iron").unwrap_or(&0);
+            let steel: u32 = *self.alloys.get("Steel").unwrap_or(&0);
+            let mithril: u32 = *self.alloys.get("Mithril").unwrap_or(&0);
+            let adamantite: u32 = *self.alloys.get("Adamantite").unwrap_or(&0);
+            let runite: u32 = *self.alloys.get("Runite").unwrap_or(&0);
+            let dragonite: u32 = *self.alloys.get("Dragonite").unwrap_or(&0);
+
+        ui.horizontal(|ui| {
+            for sword in [
+                "Metal Sword", "Bronze Sword", "Iron Sword", "Steel Sword",
+                "Mithril Sword", "Adamantite Sword", "Runite Sword", "Dragonite Sword"
+            ] {
+                let count = self.forgableSwords.get(sword).unwrap_or(&0);
+                ui.label(egui::RichText::new(format!("{}: {}", sword, count)).color(egui::Color32::WHITE));
+            }
+        });
+
+        ui.horizontal(|ui| {
+            for ring in [
+                "Metal Ring", "Bronze Ring", "Iron Ring", "Steel Ring",
+                "Mithril Ring", "Adamantite Ring", "Runite Ring", "Dragonite Ring"
+            ] {
+                let count = self.forgableRings.get(ring).unwrap_or(&0);
+                ui.label(egui::RichText::new(format!("{}: {}", ring, count)).color(egui::Color32::WHITE));
+            }
+        });
+
+        ui.horizontal(|ui| {
+            for alloy in [
+                "Bronze", "Iron", "Steel", "Mithril",
+                "Adamantite", "Runite", "Dragonite"
+            ] {
+                let count = self.alloys.get(alloy).unwrap_or(&0);
+                ui.label(egui::RichText::new(format!("{}: {}", alloy, count)).color(egui::Color32::WHITE));
+            }
+        });
+         // Smithing actions
+
+        if self.unlocks.forgingBasics {
+            if ui.add_enabled(metal_runes >= 5, styled_button("Forge Metal Sword")).clicked() {
+                *self.forgableSwords.get_mut("Metal Sword").unwrap() += 1;
+                *self.advRunes.get_mut("Metal Rune").unwrap() -= 5;
+            }
+            if ui.add_enabled(bronze >= 5, styled_button("Forge Bronze Sword")).clicked() {
+                *self.forgableSwords.get_mut("Bronze Sword").unwrap() += 1;
+                *self.alloys.get_mut("Bronze").unwrap() -= 5;
+            }
+            if ui.add_enabled(iron >= 5, styled_button("Forge Iron Sword")).clicked() {
+                *self.forgableSwords.get_mut("Iron Sword").unwrap() += 1;
+                *self.alloys.get_mut("Iron").unwrap() -= 5;
+            }
+            if ui.add_enabled(steel >= 5, styled_button("Forge Steel Sword")).clicked() {
+                *self.forgableSwords.get_mut("Steel Sword").unwrap() += 1;
+                *self.alloys.get_mut("Steel").unwrap() -= 5;
+            }
+            if ui.add_enabled(mithril >= 5, styled_button("Forge Mithril Sword")).clicked() {
+                *self.forgableSwords.get_mut("Mithril Sword").unwrap() += 1;
+                *self.alloys.get_mut("Mithril").unwrap() -= 5;
+            }
+            if ui.add_enabled(adamantite >= 5, styled_button("Forge Adamantite Sword")).clicked() {
+                *self.forgableSwords.get_mut("Adamantite Sword").unwrap() += 1;
+                *self.alloys.get_mut("Adamantite").unwrap() -= 5;
+            }
+            if ui.add_enabled(runite >= 5, styled_button("Forge Runite Sword")).clicked() {
+                *self.forgableSwords.get_mut("Runite Sword").unwrap() += 1;
+                *self.alloys.get_mut("Runite").unwrap() -= 5;
+            }
+            if ui.add_enabled(dragonite >= 5, styled_button("Forge Dragonite Sword")).clicked() {
+                *self.forgableSwords.get_mut("Dragonite Sword").unwrap() += 1;
+                *self.alloys.get_mut("Dragonite").unwrap() -= 5;
+            }
+        }
+
+        if self.unlocks.forgingBasics {
+            if ui.add_enabled(metal_runes >= 3, styled_button("Forge Metal Ring")).clicked() {
+                *self.forgableRings.get_mut("Metal Ring").unwrap() += 1;
+                *self.advRunes.get_mut("Metal Rune").unwrap() -= 3;
+            }
+            if ui.add_enabled(bronze >= 3, styled_button("Forge Bronze Ring")).clicked() {
+                *self.forgableRings.get_mut("Bronze Ring").unwrap() += 1;
+                *self.alloys.get_mut("Bronze").unwrap() -= 3;
+            }
+            if ui.add_enabled(iron >= 3, styled_button("Forge Iron Ring")).clicked() {
+                *self.forgableRings.get_mut("Iron Ring").unwrap() += 1;
+                *self.alloys.get_mut("Iron").unwrap() -= 3;
+            }
+            if ui.add_enabled(steel >= 3, styled_button("Forge Steel Ring")).clicked() {
+                *self.forgableRings.get_mut("Steel Ring").unwrap() += 1;
+                *self.alloys.get_mut("Steel").unwrap() -= 3;
+            }
+            if ui.add_enabled(mithril >= 3, styled_button("Forge Mithril Ring")).clicked() {
+                *self.forgableRings.get_mut("Mithril Ring").unwrap() += 1;
+                *self.alloys.get_mut("Mithril").unwrap() -= 3;
+            }
+            if ui.add_enabled(adamantite >= 3, styled_button("Forge Adamantite Ring")).clicked() {
+                *self.forgableRings.get_mut("Adamantite Ring").unwrap() += 1;
+                *self.alloys.get_mut("Adamantite").unwrap() -= 3;
+            }
+            if ui.add_enabled(runite >= 3, styled_button("Forge Runite Ring")).clicked() {
+                *self.forgableRings.get_mut("Runite Ring").unwrap() += 1;
+                *self.alloys.get_mut("Runite").unwrap() -= 3;
+            }
+            if ui.add_enabled(dragonite >= 3, styled_button("Forge Dragonite Ring")).clicked() {
+                *self.forgableRings.get_mut("Dragonite Ring").unwrap() += 1;
+                *self.alloys.get_mut("Dragonite").unwrap() -= 3;
+            }
+        }
+
+        if self.unlocks.alloyForging {
+            if ui.add_enabled(
+                metal_runes >= 5 &&
+                mist_runes >= 3 &&
+                plasma_runes >= 3 &&
+                gust_runes >= 3,
+                styled_button("Forge Bronze Alloy Cost: 5 Metal, 3 Mist, 3 Plasma, 3 Gust")
+            ).clicked() {
+                *self.alloys.get_mut("Bronze").unwrap() += 1;
+                *self.advRunes.get_mut("Metal Rune").unwrap() -= 5;
+                *self.advRunes.get_mut("Mist Rune").unwrap() -= 3;
+                *self.advRunes.get_mut("Plasma Rune").unwrap() -= 3;
+                *self.advRunes.get_mut("Gust Rune").unwrap() -= 3;
+            }
+            if ui.add_enabled(
+                bronze >= 3 &&
+                mist_runes >= 5 &&
+                plasma_runes >= 5 &&
+                gust_runes >= 5,
+                styled_button("Forge Iron Alloy Cost: 3 Bronze 5 Mist, 5 Plasma, 5 Gust")
+            ).clicked() {
+                *self.alloys.get_mut("Iron").unwrap() += 1;
+                *self.alloys.get_mut("Bronze").unwrap() -= 3;
+                *self.advRunes.get_mut("Mist Rune").unwrap() -= 5;
+                *self.advRunes.get_mut("Plasma Rune").unwrap() -= 5;
+                *self.advRunes.get_mut("Gust Rune").unwrap() -= 5;
+            }
+            if ui.add_enabled(
+                iron >= 3 &&
+                mist_runes >= 7 &&
+                plasma_runes >= 7 &&
+                gust_runes >= 7, styled_button("Forge Steel Alloy Cost: 3 Iron, 7 Mist, 7 Plasma, 7 Gust")
+            ).clicked() {
+                *self.alloys.get_mut("Steel").unwrap() += 1;
+                *self.alloys.get_mut("Iron").unwrap() -= 3;
+                *self.advRunes.get_mut("Mist Rune").unwrap() -= 7;
+                *self.advRunes.get_mut("Plasma Rune").unwrap() -= 7;
+                *self.advRunes.get_mut("Gust Rune").unwrap() -= 7;
+            }
+            if ui.add_enabled(
+                steel >= 3 &&
+                mist_runes >= 10 &&
+                plasma_runes >= 10 &&
+                gust_runes >= 10,
+                styled_button("Forge Mithril Alloy Cost: 3 Steel, 10 Mist, 10 Plasma, 10 Gust")
+            ).clicked() {
+                *self.alloys.get_mut("Mithril").unwrap() += 1;
+                *self.alloys.get_mut("Steel").unwrap() -= 3;
+                *self.advRunes.get_mut("Mist Rune").unwrap() -= 10;
+                *self.advRunes.get_mut("Plasma Rune").unwrap() -= 10;
+                *self.advRunes.get_mut("Gust Rune").unwrap() -= 10;
+            }
+            if ui.add_enabled(
+                mithril >= 3 &&
+                mist_runes >= 15 &&
+                plasma_runes >= 15 &&
+                gust_runes >= 15,
+                styled_button("Forge Adamantite Alloy Cost: 3 Mithril, 15 Mist, 15 Plasma, 15 Gust")
+            ).clicked() {
+                *self.alloys.get_mut("Adamantite").unwrap() += 1;
+                *self.alloys.get_mut("Mithril").unwrap() -= 3;
+                *self.advRunes.get_mut("Mist Rune").unwrap() -= 15;
+                *self.advRunes.get_mut("Plasma Rune").unwrap() -= 15;
+                *self.advRunes.get_mut("Gust Rune").unwrap() -= 15;
+            }
+            if ui.add_enabled(
+                adamantite >= 3 &&
+                mist_runes >= 20 &&
+                plasma_runes >= 20 &&
+                gust_runes >= 20,
+                styled_button("Forge Runite Alloy Cost: 3 Adamantite, 20 Mist, 20 Plasma, 20 Gust")
+            ).clicked() {
+                *self.alloys.get_mut("Runite").unwrap() += 1;
+                *self.alloys.get_mut("Adamantite").unwrap() -= 3;
+                *self.advRunes.get_mut("Mist Rune").unwrap() -= 20;
+                *self.advRunes.get_mut("Plasma Rune").unwrap() -= 20;
+                *self.advRunes.get_mut("Gust Rune").unwrap() -= 20;
+            }
+            if ui.add_enabled(
+                runite >= 3 &&
+                mist_runes >= 25 &&
+                plasma_runes >= 25 &&
+                gust_runes >= 25,
+                styled_button("Forge Dragonite Alloy Cost: 3 Runite, 25 Mist, 25 Plasma, 25 Gust")
+            ).clicked() {
+                *self.alloys.get_mut("Dragonite").unwrap() += 1;
+                *self.alloys.get_mut("Runite").unwrap() -= 3;
+                *self.advRunes.get_mut("Mist Rune").unwrap() -= 25;
+                *self.advRunes.get_mut("Plasma Rune").unwrap() -= 25;
+                *self.advRunes.get_mut("Gust Rune").unwrap() -= 25;
+            }
+
+        }
+
+         // Building progression
+
         match self.BuildingProgress {
             BuildingStuffProgress::ForgeFoundation => {
                 if let Some(&metal) = self.advRunes.get("Metal Rune") {
                     if ui.add_enabled(metal >= 5, styled_button("Buy Upgrade 5 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 5;
+                        self.BuildingProgress = BuildingStuffProgress::ForgeAnvil;
+                        self.maxEssence += 25;
                     }
                 }
             }
+
             BuildingStuffProgress::ForgeAnvil => {
                 if let Some(&metal) = self.advRunes.get("Metal Rune") {
                     if ui.add_enabled(metal >= 10, styled_button("Buy Upgrade 10 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 10;
+                        self.BuildingProgress = BuildingStuffProgress::ForgeFireplace;
+                        self.maxEssence += 25;
+                        self.unlocks.forgingBasics = true;
                     }
                 }
             }
@@ -342,6 +583,9 @@ impl Clicker {
                 if let Some(&metal) = self.advRunes.get("Metal Rune") {
                     if ui.add_enabled(metal >= 15, styled_button("Buy Upgrade 15 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 15;
+                        self.BuildingProgress = BuildingStuffProgress::ForgeWalls;
+                        self.maxEssence += 25;
+                        self.FireStages = ForgeFireStages::Kindling;
                     }
                 }
             }
@@ -349,6 +593,8 @@ impl Clicker {
                 if let Some(&metal) = self.advRunes.get("Metal Rune") {
                     if ui.add_enabled(metal >= 20, styled_button("Buy Upgrade 20 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 20;
+                        self.BuildingProgress = BuildingStuffProgress::ForgeRoof;
+                        self.maxEssence += 25;
                     }
                 }
             }
@@ -357,10 +603,27 @@ impl Clicker {
                     if ui.add_enabled(metal >= 25, styled_button("Buy Upgrade 25 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 25;
                         self.unlocks.forgingBasics = true;
+                        self.BuildingProgress = BuildingStuffProgress::Complete;
+                        self.maxEssence += 50;
+                        self.unlocks.alloyForging = true;
                     }
                 }
             }
-            _ => {}
+            BuildingStuffProgress::StoreFront => {
+                // Similar structure for StoreFront
+            }
+            BuildingStuffProgress::StoreShelves => {
+                // Similar structure for StoreShelves
+            }
+            BuildingStuffProgress::AlchemyBench => {
+                // Similar structure for AlchemyBench
+            }
+            BuildingStuffProgress::AlchemyStand => {
+                // Similar structure for AlchemyStand
+            }
+            BuildingStuffProgress::Complete => {
+                ui.label(egui::RichText::new("All buildings completed!").color(egui::Color32::WHITE));
+            }
         }
         // Placeholder for smithing actions
 
@@ -403,6 +666,88 @@ impl Clicker {
                 }
             }
             FirstQuest::Complete => {
+                //hopes and prayers
+            }
+        }
+        match self.gatherQuest {
+            SecondQuest::CollectWaterRunes => {
+                if let Some(&water) = self.runes.get("Water Rune") {
+                    if ui.add_enabled(water >= 10, styled_button("Turn in 10 Water Runes")).clicked() {
+                        *self.runes.get_mut("Water Rune").unwrap() -= 10;
+                        self.gatherQuest = SecondQuest::CollectMistRunes;
+                        self.souls += 1;
+                    }
+                } 
+            }
+            SecondQuest::CollectMistRunes => {
+                if let Some(&mist) = self.advRunes.get("Mist Rune") {
+                    if ui.add_enabled(mist >= 3, styled_button("Turn in 3 Mist Runes")).clicked() {
+                        *self.advRunes.get_mut("Mist Rune").unwrap() -= 3;
+                        self.gatherQuest = SecondQuest::Complete;
+                        self.souls += 1;
+                    }
+                }
+            }
+            SecondQuest::Complete => {
+                //hopes and prayers
+            }
+        }
+        match self.forgeQuest {
+            ForgeQuest::BuildForge => {
+                if let Some(&metal) = self.advRunes.get("Metal Rune") {
+                    if ui.add_enabled(metal >= 20, styled_button("Turn in 20 Metal Runes")).clicked() {
+                        *self.advRunes.get_mut("Metal Rune").unwrap() -= 20;
+                        self.forgeQuest = ForgeQuest::MakeBasicSword;
+                        self.souls += 1;
+                    }
+                } 
+            }
+            ForgeQuest::MakeBasicSword => {
+                if let Some(&metal_sword) = self.forgableSwords.get("Metal Sword") {
+                    if ui.add_enabled(metal_sword >= 1, styled_button("Turn in 1 Metal Sword")).clicked() {
+                        *self.forgableSwords.get_mut("Metal Sword").unwrap() -= 1;
+                        self.forgeQuest = ForgeQuest::MakeBasicRing;
+                        self.souls += 1;
+                    }
+                }
+            }
+            ForgeQuest::MakeBasicRing => {
+                if let Some(&metal_ring) = self.forgableRings.get("Metal Ring") {
+                    if ui.add_enabled(metal_ring >= 1, styled_button("Turn in 1 Metal Ring")).clicked() {
+                        *self.forgableRings.get_mut("Metal Ring").unwrap() -= 1;
+                        self.forgeQuest = ForgeQuest::MakeAlloys;
+                        self.souls += 1;
+                    }
+                }
+            }
+            ForgeQuest::MakeAlloys => {
+                if let Some(&bronze) = self.alloys.get("Bronze") {
+                    if ui.add_enabled(bronze >= 15, styled_button("Turn in 15 Bronze")).clicked() {
+                        *self.alloys.get_mut("Bronze").unwrap() -= 15;
+                        self.forgeQuest = ForgeQuest::MakeAdvancedSword;
+                        self.souls += 1;
+                    }
+                }
+            }
+            ForgeQuest::MakeAdvancedSword => {
+                if let Some(&mithril_sword) = self.forgableSwords.get("Mithril Sword") {
+                    if ui.add_enabled(mithril_sword >= 1, styled_button("Turn in 1 Mithril Sword")).clicked() {
+                        *self.forgableSwords.get_mut("Bronze Sword").unwrap() -= 1;
+                        self.forgeQuest = ForgeQuest::MakeAdvancedRing;
+                        self.souls += 1;
+                    }
+                }
+            }
+            ForgeQuest::MakeAdvancedRing => {
+                if let Some(&mithril_ring) = self.forgableRings.get("Mithril Ring") {
+                    if ui.add_enabled(mithril_ring >= 1, styled_button("Turn in 1 Mithril Ring")).clicked() {
+                        *self.forgableRings.get_mut("Mithril Ring").unwrap() -= 1;
+                        self.forgeQuest = ForgeQuest::Complete;
+                        self.souls += 1;
+                    }
+                }
+            }
+            ForgeQuest::Complete => {
                 //hopes and prayers
             }
         }
