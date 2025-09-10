@@ -342,7 +342,7 @@ impl Clicker {
 
         // Clicking button
         if ui.add(styled_button("Conjure resources")).clicked() {
-            self.essence = (self.essence + self.essenceAmount).min(self.maxEssence);
+            self.essence = (self.essence + self.essenceClickAmount).min(self.maxEssence);
             let mut rng = rand::thread_rng();
 
             if rng.gen_range(0..100) < self.runeChance {
@@ -723,7 +723,7 @@ impl Clicker {
         // Upgrade 1: Soul to Essence Conversion
         if ui.add_enabled(self.souls >= 1, styled_button("Buy Upgrade (1 soul)")).clicked() {
             if safe_subtract(&mut self.souls, 1) {
-                self.essenceAmount += 1;
+                self.essenceClickAmount += 1;
                 self.unlocks.essenceConversion = true;
             }
         }
@@ -900,7 +900,7 @@ impl Clicker {
         ui.heading(egui::RichText::new("Stat Break Down Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new("Detailed stats of your progress.").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Essence Limit {}", self.maxEssence)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Essence per Click {}", self.essenceAmount)).color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new(format!("Essence per Click {}", self.essenceClickAmount)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Rune Chance {}", self.runeChance)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Runes per Conversion {}", self.runeConversionAmount)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Forging Extra Item Chance {} (Does not apply to Alloys)", self.extraForgeItemChance)).color(egui::Color32::WHITE));
