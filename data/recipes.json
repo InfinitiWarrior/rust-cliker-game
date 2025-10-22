@@ -1,0 +1,128 @@
+{
+"crystals":{
+    "gelum": {
+        "ignis": 5,
+        "perditio": 5
+    },
+    "lux": {
+        "aer": 5,
+        "ignis": 5
+    },
+    "metallum": {
+        "terra": 5,
+        "ordo": 5
+    },
+    "motus": {
+        "aer": 5,
+        "ordo": 5
+    },
+    "mortuus": {
+        "perditio": 5,
+        "aqua": 5
+    },
+    "permutatio": {
+        "ordo": 5,
+        "perditio": 5
+    },
+    "potentia": {
+        "ignis": 5,
+        "ordo": 5
+    },
+    "vacous": {
+        "aer": 5,
+        "perditio": 5
+    },
+    "victus": {
+        "aqua": 5,
+        "terra": 5
+    },
+    "vitreus": {
+        "aer": 5,
+        "terra": 5
+    },
+    "besita": {
+        "motus": 5,
+        "victus": 5
+    },
+    "exanimis": {
+        "mortuus": 5,
+        "motus": 5
+    },
+    "herba": {
+        "victus": 5,
+        "terra": 5
+    },
+    "instrumentum": {
+        "metallum": 5,
+        "potentia": 5
+    },
+    "preacatitio": {
+        "aer": 5,
+        "potentia": 5
+    },
+    "spiritus": {
+        "mortuus": 5,
+        "victus": 5
+    },
+    "tenebrae": {
+        "lux": 5,
+        "vacous": 5
+    },
+    "viniculum": {
+        "motus": 5,
+        "perditio": 5
+    },
+    "volatus": {
+        "aer": 5,
+        "motus": 5
+    },
+    "alkimia": {
+        "preacatitio": 5,
+        "aqua": 5
+    },
+    "alienis": {
+        "tenebrae": 5,
+        "vacous": 5
+    },
+    "auram": {
+        "preacatitio": 5,
+        "aer": 5
+    },
+    "aversio": {
+        "spiritus": 5,
+        "perditio": 5
+    },
+    "cognito": {
+        "spiritus": 5,
+        "ignis": 5
+    },
+    "desiderium": {
+        "spiritus": 5,
+        "vacous": 5
+    },
+    "fabrico": {
+        "permutatio": 5,
+        "instrumentum": 5
+    },
+    "humanus": {
+        "spiritus": 5,
+        "victus": 5
+    },
+    "machina": {
+        "instrumentum": 5,
+        "motus": 5
+    },
+    "preamunio": {
+        "spiritus": 5,
+        "terra": 5
+    },
+    "sensus": {
+        "sensus": 5,
+        "spiritus": 5
+    },
+    "vitium": {
+        "perditio": 5,
+        "preacatitio": 5
+    }
+    }
+}

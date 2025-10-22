@@ -3,8 +3,24 @@
 use eframe::egui;
 use std::collections::HashMap;
 use rand::Rng;
+use std::fs;
+use serde::Deserialize;
+use anyhow::Result;
+
+fn anyhow_to_eframe(e: anyhow::Error) -> eframe::Error {
+    eframe::Error::AppCreation(Box::new(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        e.to_string(),
+    )))
+}
 
 fn main() -> eframe::Result<()> {
+    let save: Savefile = load_json("saves/save1.json").map_err(anyhow_to_eframe)?;
+    let recipes: RecipesFile = load_json("data/recipes.json").map_err(anyhow_to_eframe)?;
+
+    println!("Player: {} [{}]", save.player.Charactername, save.player.Title);
+    println!("Level: {}, XP: {}\n", save.player.Level, save.player.Experience);
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1920.0, 1080.0])
@@ -15,8 +31,14 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Clicker Game",
         options,
-        Box::new(|_cc| Ok(Box::new(Clicker::default()))),
+        Box::new(move |_cc| Ok(Box::new(Clicker::from_save(save)))),
     )
+}
+
+fn load_json<T: for<'de> Deserialize<'de>>(file_path: &str) -> Result<T> {
+    let data = fs::read_to_string(file_path)?;
+    let parsed: T = serde_json::from_str(&data)?;
+    Ok(parsed)
 }
 
 fn safe_subtract(value: &mut u32, amount: u32) -> bool {
@@ -27,7 +49,6 @@ fn safe_subtract(value: &mut u32, amount: u32) -> bool {
         false
     }
 }
-
 
 enum MenuTab {
     Clicking,
@@ -149,6 +170,7 @@ enum ForgeAlloys {
     Dragonite,
     Complete,
 }
+
 struct Clicker {
     unlocks: Unlocks,
     essence: u32,
@@ -158,6 +180,7 @@ struct Clicker {
     runeConversionCost: u32,
     alloys: HashMap<String, u32>,
     advRunes: HashMap<String, u32>,
+    crystals: HashMap<String, u32>,
     forgableSwords: HashMap<String, u32>,
     forgableRings: HashMap<String, u32>,
     essenceClickAmount: u32,
@@ -183,12 +206,41 @@ struct Clicker {
     equipmentQuest: EquipmentQuest,
     runeConversionAmount: u32,
     advRuneConversionAmount: u32,
-    autoClickInterval: f32, // seconds between auto-clicks
-    autoClickTimer: f32,    // accumulates time
-    playTime: f32,         // total playtime in seconds
-    
+    autoClickInterval: f32,
+    autoClickTimer: f32,
+    playTime: f32,
 }
 
+#[derive(Deserialize, Debug)]
+struct Savefile {
+    player: Player,
+    inventory: Inventory,
+    settings: Settings,
+    unlocks: Unlocks,
+    progress: Progress,
+    upgrades: Upgrades,
+}
+#[derive(Deserialize, Debug)]
+struct Player {
+    Charactername: String,
+    Title: String,
+    Level: u32,
+    Experience: u32,
+}
+
+#[derive(Deserialize, Debug)]
+struct Inventory {
+    gold: u32,
+    essence: u32,
+    crystals: HashMap<String, u32>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Settings {
+    colorScheme: String,
+}
+
+#[derive(Deserialize, Debug)]
 struct Unlocks {
     advancedRunes: bool,
     essenceConversion: bool,
@@ -196,6 +248,23 @@ struct Unlocks {
     alchemyBasics: bool,
     alloyForging: bool,
     autoCliking: bool,
+}
+
+#[derive(Deserialize, Debug)]
+struct Progress {
+    totalClicks: u32,
+    totalEssenceEarned: u32,
+}
+
+#[derive(Deserialize, Debug)]
+struct Upgrades {
+    clickPower: u32,
+    autoClicker: u32,
+}
+
+#[derive(Deserialize, Debug)]
+struct RecipesFile {
+    crystals: HashMap<String, HashMap<String, u32>>,
 }
 
 struct UpgradePrices {
@@ -224,6 +293,7 @@ impl Default for Clicker {
         for advRune in ["Plasma", "Mist", "Metal", "Gust"] {
             advRunes.insert(format!("{} Rune", advRune), 0);
         }
+        let crystals = HashMap::new();
         let mut forgableSwords = HashMap::new();
         for sword in [
             "Metal Sword", "Bronze Sword", "Iron Sword", "Steel Sword",
@@ -254,6 +324,7 @@ impl Default for Clicker {
             runeChance: 50,
             runes,
             advRunes,
+            crystals,
             alloys,
             forgableSwords,
             forgableRings,
@@ -302,6 +373,14 @@ impl Default for Clicker {
     }
 }
 
+impl Clicker {
+    fn from_save(save: Savefile) -> Self {
+        let mut s = Clicker::default();
+        s.crystals = save.inventory.crystals;
+        s
+    }
+}
+
 // Helper function for main action buttons
 fn styled_button(label: &str) -> egui::Button {
     egui::Button::new(
@@ -331,6 +410,13 @@ impl Clicker {
         ui.horizontal(|ui| {
             for (rune, amount) in &self.runes {
                 ui.label(egui::RichText::new(format!("{}: {}", rune, amount)).color(egui::Color32::WHITE));
+            }
+        });
+
+        // Display crystals (from save inventory)
+        ui.horizontal(|ui| {
+            for (crystal, amount) in &self.crystals {
+                ui.label(egui::RichText::new(format!("{}: {}", crystal, amount)).color(egui::Color32::WHITE));
             }
         });
         // Display advanced runes
