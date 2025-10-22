@@ -2,6 +2,7 @@
 #![allow(warnings)]
 use eframe::egui;
 use std::collections::HashMap;
+use indexmap::IndexMap;
 use rand::Rng;
 use std::fs;
 use serde::Deserialize;
@@ -51,7 +52,7 @@ fn safe_subtract(value: &mut u32, amount: u32) -> bool {
 }
 
 enum MenuTab {
-    Clicking,
+    Gathering,
     Smithing,
     Upgrades,
     Quests,
@@ -173,17 +174,17 @@ enum ForgeAlloys {
 
 struct Clicker {
     unlocks: Unlocks,
-    essence: u32,
-    maxEssence: u32,
+    vis: u32,
+    maxVis: u32,
     coins: u32,
     souls: u32,
     runeConversionCost: u32,
     alloys: HashMap<String, u32>,
     advRunes: HashMap<String, u32>,
-    crystals: HashMap<String, u32>,
+    crystals: IndexMap<String, u32>,
     forgableSwords: HashMap<String, u32>,
     forgableRings: HashMap<String, u32>,
-    essenceClickAmount: u32,
+    visClickAmount: u32,
     runeClickAmount: u32,
     extraForgeItemChance: u32,
     ForgeItemAmount: u32,
@@ -231,8 +232,8 @@ struct Player {
 #[derive(Deserialize, Debug)]
 struct Inventory {
     gold: u32,
-    essence: u32,
-    crystals: HashMap<String, u32>,
+    Vis: u32,
+    crystals: IndexMap<String, u32>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -243,7 +244,7 @@ struct Settings {
 #[derive(Deserialize, Debug)]
 struct Unlocks {
     advancedRunes: bool,
-    essenceConversion: bool,
+    visConversion: bool,
     forgingBasics: bool,
     alchemyBasics: bool,
     alloyForging: bool,
@@ -253,7 +254,7 @@ struct Unlocks {
 #[derive(Deserialize, Debug)]
 struct Progress {
     totalClicks: u32,
-    totalEssenceEarned: u32,
+    totalVisEarned: u32,
 }
 
 #[derive(Deserialize, Debug)]
@@ -268,7 +269,7 @@ struct RecipesFile {
 }
 
 struct UpgradePrices {
-    essence_capacity: u32,
+    vis_capacity: u32,
     rune_click_amount: u32,
     rune_conversion_amount: u32,
     extra_forge_item_chance: u32,
@@ -293,7 +294,7 @@ impl Default for Clicker {
         for advRune in ["Plasma", "Mist", "Metal", "Gust"] {
             advRunes.insert(format!("{} Rune", advRune), 0);
         }
-        let crystals = HashMap::new();
+        let crystals = IndexMap::new();
         let mut forgableSwords = HashMap::new();
         for sword in [
             "Metal Sword", "Bronze Sword", "Iron Sword", "Steel Sword",
@@ -316,11 +317,11 @@ impl Default for Clicker {
             alloys.insert(alloy.to_string(), 0);
         }
         Self {
-            essence: 0,
-            maxEssence: 50,
+            vis: 0,
+            maxVis: 50,
             coins: 0,
             souls: 0,
-            essenceClickAmount: 1,
+            visClickAmount: 1,
             runeChance: 50,
             runes,
             advRunes,
@@ -342,14 +343,14 @@ impl Default for Clicker {
             fireQuest: FirstQuest::CollectFireRunes,
             unlocks: Unlocks {
                 advancedRunes: false,
-                essenceConversion: false,
+                visConversion: false,
                 forgingBasics: false,
                 alchemyBasics: false,
                 alloyForging: false,
                 autoCliking: false,
             },
             upgradePrices: UpgradePrices {
-                essence_capacity: 100,
+                vis_capacity: 100,
                 rune_click_amount: 200,
                 rune_conversion_amount: 300,
                 extra_forge_item_chance: 400,
@@ -358,7 +359,7 @@ impl Default for Clicker {
                 ring_limit: 700,
                 auto_click_interval: 800,
             },
-            current_tab: MenuTab::Clicking,
+            current_tab: MenuTab::Gathering,
             BuildingProgress: BuildingStuffProgress::ForgeFoundation,
             Potions: AlchemyPotions::Health,
             FireStages: ForgeFireStages::Kindling,
@@ -375,9 +376,9 @@ impl Default for Clicker {
 
 impl Clicker {
     fn from_save(save: Savefile) -> Self {
-        let mut s = Clicker::default();
-        s.crystals = save.inventory.crystals;
-        s
+        let mut clicker_default = Clicker::default();
+        clicker_default.crystals = save.inventory.crystals;
+        clicker_default
     }
 }
 
@@ -402,21 +403,14 @@ fn styled_tab(label: &str) -> egui::Button {
 }
 
 impl Clicker {
-    fn show_clicking(&mut self, ui: &mut egui::Ui) {
+    fn show_gathering(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Clicking Menu").color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Essence: {}/{}", self.essence, self.maxEssence)).color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new(format!("Vis: {}/{}", self.vis, self.maxVis)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Souls: {}", self.souls)).color(egui::Color32::WHITE));
         // Display runes
         ui.horizontal(|ui| {
             for (rune, amount) in &self.runes {
                 ui.label(egui::RichText::new(format!("{}: {}", rune, amount)).color(egui::Color32::WHITE));
-            }
-        });
-
-        // Display crystals (from save inventory)
-        ui.horizontal(|ui| {
-            for (crystal, amount) in &self.crystals {
-                ui.label(egui::RichText::new(format!("{}: {}", crystal, amount)).color(egui::Color32::WHITE));
             }
         });
         // Display advanced runes
@@ -428,7 +422,7 @@ impl Clicker {
 
         // Clicking button
         if ui.add(styled_button("Conjure resources")).clicked() {
-            self.essence = (self.essence + self.essenceClickAmount).min(self.maxEssence);
+            self.vis = (self.vis + self.visClickAmount).min(self.maxVis);
             let mut rng = rand::thread_rng();
 
             if rng.gen_range(0..100) < self.runeChance {
@@ -436,29 +430,41 @@ impl Clicker {
                 let chosen = &keys[rng.gen_range(0..keys.len())];
                 *self.runes.get_mut(chosen.as_str()).unwrap() += self.runeClickAmount;
             }
+            // Crystal gain: with the same chance as runes, add exactly one base crystal
+            if rng.gen_range(0..100) < self.runeChance {
+                let base_crystals = ["aer", "aqua", "ignis", "ordo", "perditio", "terra"];
+                let chosen_idx = rng.gen_range(0..base_crystals.len());
+                let chosen = base_crystals[chosen_idx];
+                if let Some(val) = self.crystals.get_mut(chosen) {
+                    *val += 1;
+                } else {
+                    // In case save didn't have the key, insert it
+                    self.crystals.insert(chosen.to_string(), 1);
+                }
+            }
         }
         ui.horizontal(|ui| {
             if let Some(&fire) = self.runes.get("Fire Rune") {
-                if ui.add_enabled(self.essence >= self.runeConversionCost && self.unlocks.essenceConversion == true, styled_button(&format!("Convert {} Essence to Fire Rune", self.runeConversionCost))).clicked() {
-                    self.essence -= self.runeConversionCost;
+                if ui.add_enabled(self.vis >= self.runeConversionCost && self.unlocks.visConversion == true, styled_button(&format!("Convert {} vis to Fire Rune", self.runeConversionCost))).clicked() {
+                    self.vis -= self.runeConversionCost;
                     *self.runes.get_mut("Fire Rune").unwrap() += self.runeConversionAmount;
                 }
             }
             if let Some(&water) = self.runes.get("Water Rune") {
-                if ui.add_enabled(self.essence >= self.runeConversionCost && self.unlocks.essenceConversion == true, styled_button(&format!("Convert {} Essence to Water Rune", self.runeConversionCost))).clicked() {
-                    self.essence -= self.runeConversionCost;
+                if ui.add_enabled(self.vis >= self.runeConversionCost && self.unlocks.visConversion == true, styled_button(&format!("Convert {} vis to Water Rune", self.runeConversionCost))).clicked() {
+                    self.vis -= self.runeConversionCost;
                     *self.runes.get_mut("Water Rune").unwrap() += self.runeConversionAmount;
                 }
             }
             if let Some(&earth) = self.runes.get("Earth Rune") {
-                if ui.add_enabled(self.essence >= self.runeConversionCost && self.unlocks.essenceConversion == true, styled_button(&format!("Convert {} Essence to Earth Rune", self.runeConversionCost))).clicked() {
-                    self.essence -= self.runeConversionCost;
+                if ui.add_enabled(self.vis >= self.runeConversionCost && self.unlocks.visConversion == true, styled_button(&format!("Convert {} vis to Earth Rune", self.runeConversionCost))).clicked() {
+                    self.vis -= self.runeConversionCost;
                     *self.runes.get_mut("Earth Rune").unwrap() += self.runeConversionAmount;
                 }
             }
             if let Some(&air) = self.runes.get("Air Rune") {
-                if ui.add_enabled(self.essence >= self.runeConversionCost && self.unlocks.essenceConversion == true, styled_button(&format!("Convert {} Essence to Air Rune", self.runeConversionCost))).clicked() {
-                    self.essence -= self.runeConversionCost;
+                if ui.add_enabled(self.vis >= self.runeConversionCost && self.unlocks.visConversion == true, styled_button(&format!("Convert {} vis to Air Rune", self.runeConversionCost))).clicked() {
+                    self.vis -= self.runeConversionCost;
                     *self.runes.get_mut("Air Rune").unwrap() += self.runeConversionAmount;
                 }
             }
@@ -715,7 +721,7 @@ impl Clicker {
                     if ui.add_enabled(metal >= 5, styled_button("Buy Upgrade 5 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 5;
                         self.BuildingProgress = BuildingStuffProgress::ForgeAnvil;
-                        self.maxEssence += 25;
+                        self.maxVis += 25;
                     }
                 }
             }
@@ -725,7 +731,7 @@ impl Clicker {
                     if ui.add_enabled(metal >= 10, styled_button("Buy Upgrade 10 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 10;
                         self.BuildingProgress = BuildingStuffProgress::ForgeFireplace;
-                        self.maxEssence += 25;
+                        self.maxVis += 25;
                         self.unlocks.forgingBasics = true;
                     }
                 }
@@ -735,7 +741,7 @@ impl Clicker {
                     if ui.add_enabled(metal >= 15, styled_button("Buy Upgrade 15 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 15;
                         self.BuildingProgress = BuildingStuffProgress::ForgeWalls;
-                        self.maxEssence += 25;
+                        self.maxVis += 25;
                         self.FireStages = ForgeFireStages::Kindling;
                     }
                 }
@@ -745,7 +751,7 @@ impl Clicker {
                     if ui.add_enabled(metal >= 20, styled_button("Buy Upgrade 20 Metal Runes")).clicked() {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 20;
                         self.BuildingProgress = BuildingStuffProgress::ForgeRoof;
-                        self.maxEssence += 25;
+                        self.maxVis += 25;
                     }
                 }
             }
@@ -755,7 +761,7 @@ impl Clicker {
                         *self.advRunes.get_mut("Metal Rune").unwrap() -= 25;
                         self.unlocks.forgingBasics = true;
                         self.BuildingProgress = BuildingStuffProgress::StoreFront;
-                        self.maxEssence += 50;
+                        self.maxVis += 50;
                         self.unlocks.alloyForging = true;
                     }
                 }
@@ -765,14 +771,14 @@ impl Clicker {
                     *self.forgableSwords.get_mut("Bronze Sword").unwrap() -= 2;
                     *self.forgableRings.get_mut("Bronze Ring").unwrap() -= 2;
                     self.BuildingProgress = BuildingStuffProgress::StoreShelves;
-                    self.maxEssence += 50;
+                    self.maxVis += 50;
                 }
             }
             BuildingStuffProgress::StoreShelves => {
                 if ui.add_enabled(iron >= 10, styled_button("Buy Upgrade 10 iron")).clicked() {
                     *self.alloys.get_mut("Iron").unwrap() -= 10;
                     self.BuildingProgress = BuildingStuffProgress::AlchemyBench;
-                    self.maxEssence += 50;
+                    self.maxVis += 50;
                     self.swordLimit += 15;
                     self.ringLimit += 15;
                 }
@@ -781,7 +787,7 @@ impl Clicker {
                 if ui.add_enabled(self.coins >= 1000, styled_button("Buy Upgrade 1000 coins")).clicked() {
                     self.coins -= 1000;
                     self.BuildingProgress = BuildingStuffProgress::AlchemyStand;
-                    self.maxEssence += 100;
+                    self.maxVis += 100;
                     self.unlocks.alchemyBasics = true;
                     self.WaterfallStages = AlchemyWaterfallStages::Drip;
                 }
@@ -790,7 +796,7 @@ impl Clicker {
                 if ui.add_enabled(self.coins >= 5000, styled_button("Buy Upgrade 5000 coins")).clicked() {
                     self.coins -= 5000;
                     self.BuildingProgress = BuildingStuffProgress::Complete;
-                    self.maxEssence += 100;
+                    self.maxVis += 100;
                 }
             }
             BuildingStuffProgress::Complete => {
@@ -806,38 +812,38 @@ impl Clicker {
         ui.heading(egui::RichText::new("Upgrades Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new("Purchase upgrades to enhance clicks or crafting.").color(egui::Color32::WHITE));
 
-        // Upgrade 1: Soul to Essence Conversion
+        // Upgrade 1: Soul to vis Conversion
         if ui.add_enabled(self.souls >= 1, styled_button("Buy Upgrade (1 soul)")).clicked() {
             if safe_subtract(&mut self.souls, 1) {
-                self.essenceClickAmount += 1;
-                self.unlocks.essenceConversion = true;
+                self.visClickAmount += 1;
+                self.unlocks.visConversion = true;
             }
         }
 
-        // Upgrade 2: Essence Capacity
-        if ui.add_enabled(self.essence >= 50, styled_button("Upgrade Essence Capacity (+50) (50 Essence)")).clicked() {
-            if safe_subtract(&mut self.essence, 50) {
-                self.maxEssence += 50;
+        // Upgrade 2: vis Capacity
+        if ui.add_enabled(self.vis >= 50, styled_button("Upgrade Vis Capacity (+50) (50 Vis)")).clicked() {
+            if safe_subtract(&mut self.vis, 50) {
+                self.maxVis += 50;
             }
         }
 
         // Upgrade 3: Rune Click Amount
-        if ui.add_enabled(self.unlocks.advancedRunes && self.essence >= 200, styled_button("Upgrade Rune Click Amount (+1) (200 Essence)")).clicked() {
-            if safe_subtract(&mut self.essence, 200) {
+        if ui.add_enabled(self.unlocks.advancedRunes && self.vis >= 200, styled_button("Upgrade Rune Click Amount (+1) (200 Vis)")).clicked() {
+            if safe_subtract(&mut self.vis, 200) {
                 self.runeClickAmount += 1;
             }
         }
 
         // Upgrade 4: Rune Conversion Amount
-        if ui.add_enabled(self.unlocks.essenceConversion && self.essence >= 300, styled_button("Upgrade Rune Conversion Amount (+1) (300 Essence)")).clicked() {
-            if safe_subtract(&mut self.essence, 300) {
+        if ui.add_enabled(self.unlocks.visConversion && self.vis >= 300, styled_button("Upgrade Rune Conversion Amount (+1) (300 Vis)")).clicked() {
+            if safe_subtract(&mut self.vis, 300) {
                 self.runeConversionAmount += 1;
             }
         }
 
         // Upgrade 5: Extra Forge Item Chance
-        if ui.add_enabled(self.unlocks.forgingBasics && self.essence >= 400, styled_button("Upgrade Extra Forge Item Chance (+5%) (400 Essence)")).clicked() {
-            if safe_subtract(&mut self.essence, 400) {
+        if ui.add_enabled(self.unlocks.forgingBasics && self.vis >= 400, styled_button("Upgrade Extra Forge Item Chance (+5%) (400 Vis)")).clicked() {
+            if safe_subtract(&mut self.vis, 400) {
                 self.extraForgeItemChance += 5;
             }
         }
@@ -985,8 +991,8 @@ impl Clicker {
     fn show_stat_breakdown(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Stat Break Down Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new("Detailed stats of your progress.").color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Essence Limit {}", self.maxEssence)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Essence per Click {}", self.essenceClickAmount)).color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new(format!("Vis Limit {}", self.maxVis)).color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new(format!("Vis per Click {}", self.visClickAmount)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Rune Chance {}", self.runeChance)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Runes per Conversion {}", self.runeConversionAmount)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Forging Extra Item Chance {} (Does not apply to Alloys)", self.extraForgeItemChance)).color(egui::Color32::WHITE));
@@ -1012,13 +1018,13 @@ impl eframe::App for Clicker {
             self.autoClickTimer += dt;
             if self.autoClickTimer >= self.autoClickInterval {
                 self.autoClickTimer -= self.autoClickInterval;
-                self.essence = (self.essence + self.essenceClickAmount).min(self.maxEssence);
+                self.vis = (self.vis + self.visClickAmount).min(self.maxVis);
                 
             }
         }
 
         let bg_color = match self.current_tab {
-            MenuTab::Clicking => egui::Color32::from_rgb(40, 40, 80),
+            MenuTab::Gathering => egui::Color32::from_rgb(40, 40, 80),
             MenuTab::Smithing => egui::Color32::from_rgb(60, 30, 30),
             MenuTab::Upgrades => egui::Color32::from_rgb(30, 60, 30),
             MenuTab::Quests => egui::Color32::from_rgb(50, 50, 50),
@@ -1036,8 +1042,8 @@ impl eframe::App for Clicker {
             )
             .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.add(styled_tab("Clicking")).clicked() {
-                    self.current_tab = MenuTab::Clicking;
+                if ui.add(styled_tab("Gather")).clicked() {
+                    self.current_tab = MenuTab::Gathering;
                 }
                 if ui.add(styled_tab("Smithing")).clicked() {
                     self.current_tab = MenuTab::Smithing;
@@ -1063,6 +1069,19 @@ impl eframe::App for Clicker {
             });
         });
 
+        // Always-visible right side panel (inventory)
+        egui::SidePanel::right("inventory_panel")
+            .resizable(false)
+            .default_width(220.0)
+            .show(ctx, |ui| {
+                ui.heading(egui::RichText::new("Inventory").color(egui::Color32::WHITE));
+                ui.separator();
+                ui.label(egui::RichText::new("Crystals").color(egui::Color32::WHITE));
+                for (crystal, amount) in &self.crystals {
+                    ui.label(egui::RichText::new(format!("{}: {}", crystal, amount)).color(egui::Color32::WHITE));
+                }
+            });
+
         // Central panel content
         egui::CentralPanel::default()
             .frame(
@@ -1071,7 +1090,7 @@ impl eframe::App for Clicker {
             )
             .show(ctx, |ui| {
                 match self.current_tab {
-                    MenuTab::Clicking => self.show_clicking(ui),
+                    MenuTab::Gathering => self.show_gathering(ui),
                     MenuTab::Smithing => self.show_smithing(ui),
                     MenuTab::Upgrades => self.show_upgrades(ui),
                     MenuTab::Quests => self.show_quests(ui),

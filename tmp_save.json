@@ -2,12 +2,12 @@
     "player":{
         "Charactername": "Bobby",
         "Title": "Newbie",
-        "Level": 0,
-        "Experience": 0
+        "Level": 5,
+        "Experience": 500
     },
     "inventory":{
         "gold": 0,
-        "Vis": 0,
+        "essence": 0,
         "crystals":{
             "aer": 0,
             "aqua": 0,
@@ -54,7 +54,7 @@
     },
     "unlocks":{
         "advancedRunes": false,
-        "visConversion": false,
+        "essenceConversion": false,
         "forgingBasics": false,
         "alchemyBasics": false,
         "alloyForging": false,
@@ -62,7 +62,7 @@
     },
     "progress":{
         "totalClicks": 100,
-        "totalVisEarned": 50
+        "totalEssenceEarned": 50
     },
     "upgrades":{
         "clickPower": 1,
