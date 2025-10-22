@@ -32,7 +32,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Clicker Game",
         options,
-        Box::new(move |_cc| Ok(Box::new(Clicker::from_save(save)))),
+        Box::new(move |_cc| Ok(Box::new(Clicker::from_save_with_recipes(save, recipes)))),
     )
 }
 
@@ -84,6 +84,8 @@ struct Clicker {
     skills: Vec<SkillNode>,
     cam_offset: egui::Vec2,
     cam_zoom: f32,
+    // Data
+    recipes: RecipesFile,
 }
 
 #[derive(Deserialize, Debug)]
@@ -117,6 +119,9 @@ struct Settings {
 #[derive(Deserialize, Debug)]
 struct Unlocks {
     advancedRunes: bool,
+    secondary_crystals: bool,
+    tertiary_crystals: bool,
+    quaternary_crystals: bool,
     visConversion: bool,
     autoCliking: bool,
 }
@@ -135,7 +140,8 @@ struct Upgrades {
 
 #[derive(Deserialize, Debug)]
 struct RecipesFile {
-    crystals: HashMap<String, HashMap<String, u32>>,
+    // crystals.category -> item -> cost_map
+    crystals: HashMap<String, HashMap<String, HashMap<String, u32>>>,
 }
 
 struct UpgradePrices {
@@ -184,6 +190,9 @@ impl Default for Clicker {
             runeConversionCost: 50,
             unlocks: Unlocks {
                 advancedRunes: false,
+                secondary_crystals: false,
+                tertiary_crystals: false,
+                quaternary_crystals: false,
                 visConversion: false,
                 autoCliking: false,
             },
@@ -239,14 +248,16 @@ impl Default for Clicker {
             ],
             cam_offset: egui::vec2(0.0, 0.0),
             cam_zoom: 1.0,
+            recipes: RecipesFile { crystals: HashMap::new() },
         }
     }
 }
 
 impl Clicker {
-    fn from_save(save: Savefile) -> Self {
+    fn from_save_with_recipes(save: Savefile, recipes: RecipesFile) -> Self {
         let mut clicker_default = Clicker::default();
         clicker_default.crystals = save.inventory.crystals;
+        clicker_default.recipes = recipes;
         clicker_default
     }
 
@@ -283,6 +294,8 @@ impl Clicker {
                     if let Some(n) = self.skills.iter_mut().find(|n| n.id == id) {
                         n.unlocked = true;
                     }
+                    // Unlock secondary crystal crafting
+                    self.unlocks.secondary_crystals = true;
                 }
             }
             // Other nodes are free for now
@@ -443,6 +456,35 @@ impl Clicker {
                 ui.label(egui::RichText::new(format!("{}: {}", rune, amount)).color(egui::Color32::WHITE));
             }
         });
+        // Secondary crystals crafting (from recipes.json), unlocked by Essence Control
+        if self.unlocks.secondary_crystals {
+            ui.separator();
+            ui.label(egui::RichText::new("Secondary Crystals").color(egui::Color32::LIGHT_BLUE));
+            if let Some(categories) = self.recipes.crystals.get("secondary") {
+                // Render buttons in rows
+                for (name, costs) in categories {
+                    // Check if we can afford costs
+                    let mut can_afford = true;
+                    for (req, &amt) in costs {
+                        if self.crystals.get(req).copied().unwrap_or(0) < amt {
+                            can_afford = false;
+                            break;
+                        }
+                    }
+                    let label = format!("Make {}", name);
+                    if ui.add_enabled(can_afford, styled_button(&label)).clicked() {
+                        // Deduct inputs
+                        for (req, &amt) in costs {
+                            if let Some(entry) = self.crystals.get_mut(req) {
+                                *entry = entry.saturating_sub(amt);
+                            }
+                        }
+                        // Add output
+                        *self.crystals.entry(name.to_string()).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
         // Display advanced runes
         ui.horizontal(|ui| {
             for (rune, amount) in &self.advRunes {
@@ -632,7 +674,7 @@ impl eframe::App for Clicker {
             )
             .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.add(styled_tab("Gather")).clicked() {
+                if ui.add(styled_tab("Gather/Convert")).clicked() {
                     self.current_tab = MenuTab::Gathering;
                 }
                 if ui.add(styled_tab("Upgrades")).clicked() {

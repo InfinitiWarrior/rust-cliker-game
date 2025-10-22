@@ -54,10 +54,10 @@
     },
     "unlocks":{
         "advancedRunes": false,
+        "secondary_crystals": false,
+        "tertiary_crystals": false,
+        "quaternary_crystals": false,
         "visConversion": false,
-        "forgingBasics": false,
-        "alchemyBasics": false,
-        "alloyForging": false,
         "autoCliking": false
     },
     "progress":{
