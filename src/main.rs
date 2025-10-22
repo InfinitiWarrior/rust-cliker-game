@@ -140,8 +140,8 @@ struct Upgrades {
 
 #[derive(Deserialize, Debug)]
 struct RecipesFile {
-    // crystals.category -> item -> cost_map
-    crystals: HashMap<String, HashMap<String, HashMap<String, u32>>>,
+    // crystals.category -> item -> cost_map (preserve JSON order)
+    crystals: IndexMap<String, IndexMap<String, IndexMap<String, u32>>>,
 }
 
 struct UpgradePrices {
@@ -248,7 +248,7 @@ impl Default for Clicker {
             ],
             cam_offset: egui::vec2(0.0, 0.0),
             cam_zoom: 1.0,
-            recipes: RecipesFile { crystals: HashMap::new() },
+            recipes: RecipesFile { crystals: IndexMap::new() },
         }
     }
 }
@@ -459,30 +459,32 @@ impl Clicker {
         // Secondary crystals crafting (from recipes.json), unlocked by Essence Control
         if self.unlocks.secondary_crystals {
             ui.separator();
-            ui.label(egui::RichText::new("Secondary Crystals").color(egui::Color32::LIGHT_BLUE));
+            ui.label(egui::RichText::new("secondary crystals").color(egui::Color32::LIGHT_BLUE));
             if let Some(categories) = self.recipes.crystals.get("secondary") {
-                // Render buttons in rows
-                for (name, costs) in categories {
-                    // Check if we can afford costs
-                    let mut can_afford = true;
-                    for (req, &amt) in costs {
-                        if self.crystals.get(req).copied().unwrap_or(0) < amt {
-                            can_afford = false;
-                            break;
-                        }
-                    }
-                    let label = format!("Make {}", name);
-                    if ui.add_enabled(can_afford, styled_button(&label)).clicked() {
-                        // Deduct inputs
+                // Render buttons left-to-right and wrap when needed
+                ui.horizontal_wrapped(|ui| {
+                    for (name, costs) in categories {
+                        // Check if we can afford costs
+                        let mut can_afford = true;
                         for (req, &amt) in costs {
-                            if let Some(entry) = self.crystals.get_mut(req) {
-                                *entry = entry.saturating_sub(amt);
+                            if self.crystals.get(req).copied().unwrap_or(0) < amt {
+                                can_afford = false;
+                                break;
                             }
                         }
-                        // Add output
-                        *self.crystals.entry(name.to_string()).or_insert(0) += 1;
+                        let label = format!("Make {}", name);
+                        if ui.add_enabled(can_afford, styled_button(&label)).clicked() {
+                            // Deduct inputs
+                            for (req, &amt) in costs {
+                                if let Some(entry) = self.crystals.get_mut(req) {
+                                    *entry = entry.saturating_sub(amt);
+                                }
+                            }
+                            // Add output
+                            *self.crystals.entry(name.to_string()).or_insert(0) += 1;
+                        }
                     }
-                }
+                });
             }
         }
         // Display advanced runes
