@@ -66,17 +66,11 @@ struct Clicker {
     vis: u32,
     maxVis: u32,
     souls: u32,
-    runeConversionCost: u32,
-    advRunes: HashMap<String, u32>,
     crystals: IndexMap<String, u32>,
     visClickAmount: u32,
-    runeClickAmount: u32,
     runeChance: u32,
-    runes: HashMap<String, u32>,
     upgradePrices: UpgradePrices,
     current_tab: MenuTab,
-    runeConversionAmount: u32,
-    advRuneConversionAmount: u32,
     autoClickInterval: f32,
     autoClickTimer: f32,
     playTime: f32,
@@ -134,7 +128,8 @@ struct Progress {
 
 #[derive(Deserialize, Debug)]
 struct Upgrades {
-    clickPower: u32,
+    #[serde(alias = "clickPower")]
+    visClickAmount: u32,
     autoClicker: u32,
 }
 
@@ -146,8 +141,8 @@ struct RecipesFile {
 
 struct UpgradePrices {
     vis_capacity: u32,
-    rune_click_amount: u32,
-    rune_conversion_amount: u32,
+    vis_click_amount_cost: u32,
+    vis_conversion_amount_cost: u32,
     auto_click_interval: u32,
 }
 
@@ -163,14 +158,6 @@ struct SkillNode {
 
 impl Default for Clicker {
     fn default() -> Self {
-        let mut runes = HashMap::new();
-        for rune in ["Fire", "Water", "Earth", "Air"] {
-            runes.insert(format!("{} Rune", rune), 0);
-        }
-        let mut advRunes = HashMap::new();
-        for advRune in ["Plasma", "Mist", "Metal", "Gust"] {
-            advRunes.insert(format!("{} Rune", advRune), 0);
-        }
         let crystals = IndexMap::new();
         Self {
             vis: 0,
@@ -178,16 +165,10 @@ impl Default for Clicker {
             souls: 0,
             visClickAmount: 1,
             runeChance: 50,
-            runes,
-            advRunes,
             crystals,
-            runeConversionAmount: 1,
-            advRuneConversionAmount: 1,
-            runeClickAmount: 1,
             autoClickInterval: 30.0,
             autoClickTimer: 0.0,
             playTime: 0.0,
-            runeConversionCost: 50,
             unlocks: Unlocks {
                 advancedRunes: false,
                 secondary_crystals: false,
@@ -198,17 +179,17 @@ impl Default for Clicker {
             },
             upgradePrices: UpgradePrices {
                 vis_capacity: 100,
-                rune_click_amount: 200,
-                rune_conversion_amount: 300,
+                vis_click_amount_cost: 200,
+                vis_conversion_amount_cost: 300,
                 auto_click_interval: 800,
             },
             current_tab: MenuTab::Gathering,
             // Thauminomicon default
             skills: vec![
                 SkillNode {
-                    id: "basic_runes",
-                    name: "Basic Runes",
-                    description: "Foundational runes and minor inscriptions.",
+                    id: "basic_crystals",
+                    name: "Basic Crystals",
+                    description: "Foundational Crystals and minor inscriptions.",
                     position: egui::pos2(300.0, 300.0),
                     unlocked: true,
                     prerequisites: vec![],
@@ -219,11 +200,11 @@ impl Default for Clicker {
                     description: "Harness and shape raw vis.",
                     position: egui::pos2(600.0, 360.0),
                     unlocked: false,
-                    prerequisites: vec!["basic_runes"],
+                    prerequisites: vec!["basic_crystals"],
                 },
                 SkillNode {
-                    id: "advanced_runes",
-                    name: "Advanced Runes",
+                    id: "advanced_crystals",
+                    name: "Advanced Crystals",
                     description: "Complex runic patterns and bindings.",
                     position: egui::pos2(900.0, 300.0),
                     unlocked: false,
@@ -243,7 +224,7 @@ impl Default for Clicker {
                     description: "Distill and combine essences.",
                     position: egui::pos2(1200.0, 300.0),
                     unlocked: false,
-                    prerequisites: vec!["advanced_runes"],
+                    prerequisites: vec!["advanced_crystals"],
                 },
             ],
             cam_offset: egui::vec2(0.0, 0.0),
@@ -258,6 +239,8 @@ impl Clicker {
         let mut clicker_default = Clicker::default();
         clicker_default.crystals = save.inventory.crystals;
         clicker_default.recipes = recipes;
+        // Initialize from saved upgrades
+        clicker_default.visClickAmount = save.upgrades.visClickAmount;
         clicker_default
     }
 
@@ -450,12 +433,7 @@ impl Clicker {
         ui.heading(egui::RichText::new("Gather Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Vis: {}/{}", self.vis, self.maxVis)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Souls: {}", self.souls)).color(egui::Color32::WHITE));
-        // Display runes
-        ui.horizontal(|ui| {
-            for (rune, amount) in &self.runes {
-                ui.label(egui::RichText::new(format!("{}: {}", rune, amount)).color(egui::Color32::WHITE));
-            }
-        });
+
         // Secondary crystals crafting (from recipes.json), unlocked by Essence Control
         if self.unlocks.secondary_crystals {
             ui.separator();
@@ -487,23 +465,13 @@ impl Clicker {
                 });
             }
         }
-        // Display advanced runes
-        ui.horizontal(|ui| {
-            for (rune, amount) in &self.advRunes {
-                ui.label(egui::RichText::new(format!("{}: {}", rune, amount)).color(egui::Color32::WHITE));
-            }
-        });
+
 
         // Clicking button
         if ui.add(styled_button("Conjure resources")).clicked() {
             self.vis = (self.vis + self.visClickAmount).min(self.maxVis);
             let mut rng = rand::thread_rng();
 
-            if rng.gen_range(0..100) < self.runeChance {
-                let keys: Vec<String> = self.runes.keys().cloned().collect();
-                let chosen = &keys[rng.gen_range(0..keys.len())];
-                *self.runes.get_mut(chosen.as_str()).unwrap() += self.runeClickAmount;
-            }
             // Crystal gain: with the same chance as runes, add exactly one base crystal
             if rng.gen_range(0..100) < self.runeChance {
                 let base_crystals = ["aer", "aqua", "ignis", "ordo", "perditio", "terra"];
@@ -517,58 +485,7 @@ impl Clicker {
                 }
             }
         }
-        ui.horizontal(|ui| {
-            if let Some(&fire) = self.runes.get("Fire Rune") {
-                if ui.add_enabled(self.vis >= self.runeConversionCost && self.unlocks.visConversion == true, styled_button(&format!("Convert {} vis to Fire Rune", self.runeConversionCost))).clicked() {
-                    self.vis -= self.runeConversionCost;
-                    *self.runes.get_mut("Fire Rune").unwrap() += self.runeConversionAmount;
-                }
-            }
-            if let Some(&water) = self.runes.get("Water Rune") {
-                if ui.add_enabled(self.vis >= self.runeConversionCost && self.unlocks.visConversion == true, styled_button(&format!("Convert {} vis to Water Rune", self.runeConversionCost))).clicked() {
-                    self.vis -= self.runeConversionCost;
-                    *self.runes.get_mut("Water Rune").unwrap() += self.runeConversionAmount;
-                }
-            }
-            if let Some(&earth) = self.runes.get("Earth Rune") {
-                if ui.add_enabled(self.vis >= self.runeConversionCost && self.unlocks.visConversion == true, styled_button(&format!("Convert {} vis to Earth Rune", self.runeConversionCost))).clicked() {
-                    self.vis -= self.runeConversionCost;
-                    *self.runes.get_mut("Earth Rune").unwrap() += self.runeConversionAmount;
-                }
-            }
-            if let Some(&air) = self.runes.get("Air Rune") {
-                if ui.add_enabled(self.vis >= self.runeConversionCost && self.unlocks.visConversion == true, styled_button(&format!("Convert {} vis to Air Rune", self.runeConversionCost))).clicked() {
-                    self.vis -= self.runeConversionCost;
-                    *self.runes.get_mut("Air Rune").unwrap() += self.runeConversionAmount;
-                }
-            }
-        });
-        ui.horizontal(|ui| {
-            if let Some(&fire) = self.runes.get("Fire Rune") {
-                if ui.add_enabled(fire >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Plasma")).clicked() {
-                    *self.runes.get_mut("Fire Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Plasma Rune").unwrap() += self.advRuneConversionAmount;
-                }
-            }
-            if let Some(&air) = self.runes.get("Air Rune") {
-                if ui.add_enabled(air >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Gust")).clicked() {
-                    *self.runes.get_mut("Air Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Gust Rune").unwrap() += self.advRuneConversionAmount;
-                }
-            }
-            if let Some(&earth) = self.runes.get("Earth Rune") {
-                if ui.add_enabled(earth >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Metal")).clicked() {
-                    *self.runes.get_mut("Earth Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Metal Rune").unwrap() += self.advRuneConversionAmount;
-                }
-            }
-            if let Some(&water) = self.runes.get("Water Rune") {
-                if ui.add_enabled(water >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Mist")).clicked() {
-                    *self.runes.get_mut("Water Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Mist Rune").unwrap() += self.advRuneConversionAmount;
-                }
-            }
-        });
+
     }
 
     fn show_upgrades(&mut self, ui: &mut egui::Ui) {
@@ -576,10 +493,9 @@ impl Clicker {
         ui.label(egui::RichText::new("Purchase upgrades to enhance clicks or crafting.").color(egui::Color32::WHITE));
 
         // Upgrade 1: Soul to vis Conversion
-        if ui.add_enabled(self.souls >= 1, styled_button("Buy Upgrade (1 soul)")).clicked() {
+        if ui.add_enabled(self.souls >= 1, styled_button("Upgrade Vis Click Amount (1 soul)")).clicked() {
             if safe_subtract(&mut self.souls, 1) {
                 self.visClickAmount += 1;
-                self.unlocks.visConversion = true;
             }
         }
 
@@ -590,21 +506,14 @@ impl Clicker {
             }
         }
 
-        // Upgrade 3: Rune Click Amount
-        if ui.add_enabled(self.unlocks.advancedRunes && self.vis >= 200, styled_button("Upgrade Rune Click Amount (+1) (200 Vis)")).clicked() {
+        // Upgrade 3: Vis Click Amount
+        if ui.add_enabled(self.vis >= 200, styled_button("Upgrade Vis Click Amount (+1) (200 Vis)")).clicked() {
             if safe_subtract(&mut self.vis, 200) {
-                self.runeClickAmount += 1;
+                self.visClickAmount += 1;
             }
         }
 
-        // Upgrade 4: Rune Conversion Amount
-        if ui.add_enabled(self.unlocks.visConversion && self.vis >= 300, styled_button("Upgrade Rune Conversion Amount (+1) (300 Vis)")).clicked() {
-            if safe_subtract(&mut self.vis, 300) {
-                self.runeConversionAmount += 1;
-            }
-        }
-
-        // Upgrade 6: Auto Clicking
+        // Upgrade 4: Auto Clicking
         if ui.add_enabled(self.unlocks.autoCliking, styled_button("Upgrade Auto Click Interval (-0.5s)")).clicked() {
             if self.autoClickInterval >= 1.0 {
                 self.autoClickInterval -= 0.5;
@@ -633,10 +542,8 @@ impl Clicker {
         ui.label(egui::RichText::new(format!("Vis Limit {}", self.maxVis)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Vis per Click {}", self.visClickAmount)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Rune Chance {}", self.runeChance)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Runes per Conversion {}", self.runeConversionAmount)).color(egui::Color32::WHITE));
         // Placeholder for detailed stats
     }
-    
 }
 
 impl eframe::App for Clicker {
