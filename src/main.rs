@@ -68,6 +68,7 @@ struct Clicker {
     souls: u32,
     crystals: IndexMap<String, u32>,
     visClickAmount: u32,
+    crystalClickAmount: u32,
     runeChance: u32,
     upgradePrices: UpgradePrices,
     current_tab: MenuTab,
@@ -130,6 +131,7 @@ struct Progress {
 struct Upgrades {
     #[serde(alias = "clickPower")]
     visClickAmount: u32,
+    crystalClickAmount: u32,
     autoClicker: u32,
 }
 
@@ -164,6 +166,7 @@ impl Default for Clicker {
             maxVis: 50,
             souls: 0,
             visClickAmount: 1,
+            crystalClickAmount: 1,
             runeChance: 50,
             crystals,
             autoClickInterval: 30.0,
@@ -434,6 +437,25 @@ impl Clicker {
         ui.label(egui::RichText::new(format!("Vis: {}/{}", self.vis, self.maxVis)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Souls: {}", self.souls)).color(egui::Color32::WHITE));
 
+        // Clicking button
+        if ui.add(styled_button("Conjure resources")).clicked() {
+            self.vis = (self.vis + self.visClickAmount).min(self.maxVis);
+            let mut rng = rand::thread_rng();
+
+            // Crystal gain: with the same chance as runes, add exactly one base crystal
+            if rng.gen_range(0..100) < self.runeChance {
+                let base_crystals = ["aer", "aqua", "ignis", "ordo", "perditio", "terra"];
+                let chosen_idx = rng.gen_range(0..base_crystals.len());
+                let chosen = base_crystals[chosen_idx];
+                if let Some(val) = self.crystals.get_mut(chosen) {
+                    *val += self.crystalClickAmount;
+                } else {
+                    // In case save didn't have the key, insert it
+                    self.crystals.insert(chosen.to_string(), 1);
+                }
+            }
+        }
+
         // Secondary crystals crafting (from recipes.json), unlocked by Essence Control
         if self.unlocks.secondary_crystals {
             ui.separator();
@@ -465,27 +487,6 @@ impl Clicker {
                 });
             }
         }
-
-
-        // Clicking button
-        if ui.add(styled_button("Conjure resources")).clicked() {
-            self.vis = (self.vis + self.visClickAmount).min(self.maxVis);
-            let mut rng = rand::thread_rng();
-
-            // Crystal gain: with the same chance as runes, add exactly one base crystal
-            if rng.gen_range(0..100) < self.runeChance {
-                let base_crystals = ["aer", "aqua", "ignis", "ordo", "perditio", "terra"];
-                let chosen_idx = rng.gen_range(0..base_crystals.len());
-                let chosen = base_crystals[chosen_idx];
-                if let Some(val) = self.crystals.get_mut(chosen) {
-                    *val += 1;
-                } else {
-                    // In case save didn't have the key, insert it
-                    self.crystals.insert(chosen.to_string(), 1);
-                }
-            }
-        }
-
     }
 
     fn show_upgrades(&mut self, ui: &mut egui::Ui) {
@@ -509,7 +510,7 @@ impl Clicker {
         // Upgrade 3: Vis Click Amount
         if ui.add_enabled(self.vis >= 200, styled_button("Upgrade Vis Click Amount (+1) (200 Vis)")).clicked() {
             if safe_subtract(&mut self.vis, 200) {
-                self.visClickAmount += 1;
+                self.crystalClickAmount += 1;
             }
         }
 
