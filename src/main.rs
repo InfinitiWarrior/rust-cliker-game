@@ -279,6 +279,7 @@ impl Clicker {
                     self.vis -= 50;
                     if let Some(n) = self.skills.iter_mut().find(|n| n.id == id) {
                         n.unlocked = true;
+                        self.souls = self.souls.saturating_add(1);
                     }
                     // Unlock secondary crystal crafting
                     self.unlocks.secondary_crystals = true;
@@ -288,6 +289,7 @@ impl Clicker {
             _ => {
                 if let Some(n) = self.skills.iter_mut().find(|n| n.id == id) {
                     n.unlocked = true;
+                    self.souls = self.souls.saturating_add(1);
                 }
             }
         }
