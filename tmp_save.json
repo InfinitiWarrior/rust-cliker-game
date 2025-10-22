@@ -1,0 +1,73 @@
+{
+    "player":{
+        "Charactername": "Bobby",
+        "Title": "Newbie",
+        "Level": 5,
+        "Experience": 500
+    },
+    "inventory":{
+        "gold": 0,
+        "essence": 0,
+        "crystals":{
+            "aer": 0,
+            "aqua": 0,
+            "ignis": 0,
+            "ordo": 0,
+            "perditio": 0,
+            "terra": 0,
+            "gelum": 0,
+            "lux": 0,
+            "metallum": 0,
+            "motus": 0,
+            "mortuus": 0,
+            "permutatio": 0,
+            "potentia": 0,
+            "vacous": 0,
+            "victus": 0,
+            "vitreus": 0,
+            "besita": 0,
+            "exanimis": 0,
+            "herba": 0,
+            "instrumentum": 0,
+            "preacatitio": 0,
+            "spiritus": 0,
+            "tenebrae": 0,
+            "viniculum": 0,
+            "volatus": 0,
+            "alkimia": 0,
+            "alienis": 0,
+            "auram": 0,
+            "aversio": 0,
+            "cognito": 0,
+            "desiderium": 0,
+            "fabrico": 0,
+            "humanus": 0,
+            "machina": 0,
+            "preamunio": 0,
+            "sensus": 0,
+            "vitium": 0
+        }
+
+    },
+    "settings":{
+        "colorScheme": "dark"
+    },
+    "unlocks":{
+        "advancedRunes": false,
+        "essenceConversion": false,
+        "forgingBasics": false,
+        "alchemyBasics": false,
+        "alloyForging": false,
+        "autoCliking": false
+    },
+    "progress":{
+        "totalClicks": 100,
+        "totalEssenceEarned": 50
+    },
+    "upgrades":{
+        "clickPower": 1,
+        "autoClicker": 0
+    }
+
+
+}

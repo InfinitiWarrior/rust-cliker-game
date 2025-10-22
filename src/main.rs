@@ -2,9 +2,26 @@
 #![allow(warnings)]
 use eframe::egui;
 use std::collections::HashMap;
+use indexmap::IndexMap;
 use rand::Rng;
+use std::fs;
+use serde::Deserialize;
+use anyhow::Result;
+
+fn anyhow_to_eframe(e: anyhow::Error) -> eframe::Error {
+    eframe::Error::AppCreation(Box::new(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        e.to_string(),
+    )))
+}
 
 fn main() -> eframe::Result<()> {
+    let save: Savefile = load_json("saves/save1.json").map_err(anyhow_to_eframe)?;
+    let recipes: RecipesFile = load_json("data/recipes.json").map_err(anyhow_to_eframe)?;
+
+    println!("Player: {} [{}]", save.player.Charactername, save.player.Title);
+    println!("Level: {}, XP: {}\n", save.player.Level, save.player.Experience);
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1920.0, 1080.0])
@@ -15,8 +32,14 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Clicker Game",
         options,
-        Box::new(|_cc| Ok(Box::new(Clicker::default()))),
+        Box::new(move |_cc| Ok(Box::new(Clicker::from_save_with_recipes(save, recipes)))),
     )
+}
+
+fn load_json<T: for<'de> Deserialize<'de>>(file_path: &str) -> Result<T> {
+    let data = fs::read_to_string(file_path)?;
+    let parsed: T = serde_json::from_str(&data)?;
+    Ok(parsed)
 }
 
 fn safe_subtract(value: &mut u32, amount: u32) -> bool {
@@ -28,277 +51,365 @@ fn safe_subtract(value: &mut u32, amount: u32) -> bool {
     }
 }
 
-
 enum MenuTab {
-    Clicking,
-    Smithing,
+    Gathering,
     Upgrades,
-    Quests,
+    Thauminomicon,
     Equipment,
     Achievements,
     Settings,
     StatBreakDown,
 }
 
-enum FirstQuest {
-    CollectFireRunes,
-    CollectPlasmaRunes,
-    Complete,
-}
-
-enum SecondQuest {
-    CollectWaterRunes,
-    CollectMistRunes,
-    Complete,
-}
-
-enum ForgeQuest {
-    BuildForge,
-    MakeBasicSword,
-    MakeBasicRing,
-    MakeAlloys,
-    MakeAdvancedSword,
-    MakeAdvancedRing,
-    Complete,
-}
-
-enum AlchemyQuest {
-    BuildAlchemyLab,
-    MakeHealthPotion,
-    MakeManaPotion,
-    MakeStaminaPotion,
-    MakeAdvancedPotions,
-    Complete,
-}
-
-enum ThirdQuest {
-    BuildShop,
-    SellBasicItems,
-    SellAdvancedItems,
-    Complete,
-}
-
-enum EnchantingQuest {
-    InfuseBasicItems,
-    InfuseAdvancedItems,
-    UpgradeInfusions,
-    Complete,
-}
-
-enum EquipmentQuest {
-    EquipBasicGear,
-    EquipAdvancedGear,
-    Complete,
-}
-
-enum BuildingStuffProgress {
-    ForgeFoundation,
-    ForgeAnvil,
-    ForgeFireplace,
-    ForgeWalls,
-    ForgeRoof,
-    StoreFront,
-    StoreShelves,
-    AlchemyBench,
-    AlchemyStand,
-    Complete,
-}
-
-enum AlchemyPotions {
-    Health,
-    Mana,
-    Stamina,
-    Strength,
-    Agility,
-    Intelligence,
-    Complete,
-}
-
-enum ForgeFireStages {
-    Kindling,
-    SmallFire,
-    MediumFire,
-    LargeFire,
-    Inferno,
-    EternalFlame,
-    Hellflame,
-    InfernalHellFlame,
-    EternalHellFlame,
-    Complete,
-}
-
-enum AlchemyWaterfallStages {
-    Drip,
-    Stream,
-    Brook,
-    River,
-    Cascade,
-    Waterfall,
-    Ocean,
-    Sea,
-    Tsunami,
-    Complete,
-}
-enum ForgeAlloys {
-    Bronze,
-    Iron,
-    Steel,
-    Mithril,
-    Adamantite,
-    Runite,
-    Dragonite,
-    Complete,
-}
 struct Clicker {
     unlocks: Unlocks,
-    essence: u32,
-    maxEssence: u32,
-    coins: u32,
+    vis: u32,
+    maxVis: u32,
     souls: u32,
-    runeConversionCost: u32,
-    alloys: HashMap<String, u32>,
-    advRunes: HashMap<String, u32>,
-    forgableSwords: HashMap<String, u32>,
-    forgableRings: HashMap<String, u32>,
-    essenceClickAmount: u32,
-    runeClickAmount: u32,
-    extraForgeItemChance: u32,
-    ForgeItemAmount: u32,
-    swordLimit: u32,
-    ringLimit: u32,
+    crystals: IndexMap<String, u32>,
+    visClickAmount: u32,
+    crystalClickAmount: u32,
     runeChance: u32,
-    runes: HashMap<String, u32>,
-    fireQuest: FirstQuest,
     upgradePrices: UpgradePrices,
-    BuildingProgress: BuildingStuffProgress,
-    Potions: AlchemyPotions,
-    FireStages: ForgeFireStages,
-    WaterfallStages: AlchemyWaterfallStages,
     current_tab: MenuTab,
-    gatherQuest: SecondQuest,
-    forgeQuest: ForgeQuest,
-    alchemyQuest: AlchemyQuest,
-    shopQuest: ThirdQuest,
-    enchantingQuest: EnchantingQuest,
-    equipmentQuest: EquipmentQuest,
-    runeConversionAmount: u32,
-    advRuneConversionAmount: u32,
-    autoClickInterval: f32, // seconds between auto-clicks
-    autoClickTimer: f32,    // accumulates time
-    playTime: f32,         // total playtime in seconds
-    
+    autoClickInterval: f32,
+    autoClickTimer: f32,
+    playTime: f32,
+    // Thauminomicon state
+    skills: Vec<SkillNode>,
+    cam_offset: egui::Vec2,
+    cam_zoom: f32,
+    // Data
+    recipes: RecipesFile,
 }
 
+#[derive(Deserialize, Debug)]
+struct Savefile {
+    player: Player,
+    inventory: Inventory,
+    settings: Settings,
+    unlocks: Unlocks,
+    progress: Progress,
+    upgrades: Upgrades,
+}
+#[derive(Deserialize, Debug)]
+struct Player {
+    Charactername: String,
+    Title: String,
+    Level: u32,
+    Experience: u32,
+}
+
+#[derive(Deserialize, Debug)]
+struct Inventory {
+    Vis: u32,
+    crystals: IndexMap<String, u32>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Settings {
+    colorScheme: String,
+}
+
+#[derive(Deserialize, Debug)]
 struct Unlocks {
     advancedRunes: bool,
-    essenceConversion: bool,
-    forgingBasics: bool,
-    alchemyBasics: bool,
-    alloyForging: bool,
+    secondary_crystals: bool,
+    tertiary_crystals: bool,
+    quaternary_crystals: bool,
+    visConversion: bool,
     autoCliking: bool,
 }
 
+#[derive(Deserialize, Debug)]
+struct Progress {
+    totalClicks: u32,
+    totalVisEarned: u32,
+}
+
+#[derive(Deserialize, Debug)]
+struct Upgrades {
+    #[serde(alias = "clickPower")]
+    visClickAmount: u32,
+    crystalClickAmount: u32,
+    autoClicker: u32,
+}
+
+#[derive(Deserialize, Debug)]
+struct RecipesFile {
+    // crystals.category -> item -> cost_map (preserve JSON order)
+    crystals: IndexMap<String, IndexMap<String, IndexMap<String, u32>>>,
+}
+
 struct UpgradePrices {
-    essence_capacity: u32,
-    rune_click_amount: u32,
-    rune_conversion_amount: u32,
-    extra_forge_item_chance: u32,
-    forge_item_amount: u32,
-    sword_limit: u32,
-    ring_limit: u32,
+    vis_capacity: u32,
+    vis_click_amount_cost: u32,
+    vis_conversion_amount_cost: u32,
     auto_click_interval: u32,
 }
 
-struct ForgableItemCosts {
-    swords: HashMap<String, HashMap<String, u32>>,
-    rings: HashMap<String, HashMap<String, u32>>,
+#[derive(Clone)]
+struct SkillNode {
+    id: &'static str,
+    name: &'static str,
+    description: &'static str,
+    position: egui::Pos2,
+    unlocked: bool,
+    prerequisites: Vec<&'static str>,
 }
 
 impl Default for Clicker {
     fn default() -> Self {
-        let mut runes = HashMap::new();
-        for rune in ["Fire", "Water", "Earth", "Air"] {
-            runes.insert(format!("{} Rune", rune), 0);
-        }
-        let mut advRunes = HashMap::new();
-        for advRune in ["Plasma", "Mist", "Metal", "Gust"] {
-            advRunes.insert(format!("{} Rune", advRune), 0);
-        }
-        let mut forgableSwords = HashMap::new();
-        for sword in [
-            "Metal Sword", "Bronze Sword", "Iron Sword", "Steel Sword",
-            "Mithril Sword", "Adamantite Sword", "Runite Sword", "Dragonite Sword"
-        ] {
-            forgableSwords.insert(sword.to_string(), 0);
-        }
-        let mut forgableRings = HashMap::new();
-        for ring in [
-            "Metal Ring", "Bronze Ring", "Iron Ring", "Steel Ring",
-            "Mithril Ring", "Adamantite Ring", "Runite Ring", "Dragonite Ring"
-        ] {
-            forgableRings.insert(ring.to_string(), 0);
-        }
-        let mut alloys = HashMap::new();
-        for alloy in [
-            "Bronze", "Iron", "Steel", "Mithril",
-            "Adamantite", "Runite", "Dragonite"
-        ] {
-            alloys.insert(alloy.to_string(), 0);
-        }
+        let crystals = IndexMap::new();
         Self {
-            essence: 0,
-            maxEssence: 50,
-            coins: 0,
+            vis: 0,
+            maxVis: 50,
             souls: 0,
-            essenceClickAmount: 1,
+            visClickAmount: 1,
+            crystalClickAmount: 1,
             runeChance: 50,
-            runes,
-            advRunes,
-            alloys,
-            forgableSwords,
-            forgableRings,
-            runeConversionAmount: 1,
-            advRuneConversionAmount: 1,
-            extraForgeItemChance: 0,
-            ForgeItemAmount: 1,
-            swordLimit: 5,
-            ringLimit: 5,
-            runeClickAmount: 1,
+            crystals,
             autoClickInterval: 30.0,
             autoClickTimer: 0.0,
             playTime: 0.0,
-            runeConversionCost: 50,
-            fireQuest: FirstQuest::CollectFireRunes,
             unlocks: Unlocks {
                 advancedRunes: false,
-                essenceConversion: false,
-                forgingBasics: false,
-                alchemyBasics: false,
-                alloyForging: false,
+                secondary_crystals: false,
+                tertiary_crystals: false,
+                quaternary_crystals: false,
+                visConversion: false,
                 autoCliking: false,
             },
             upgradePrices: UpgradePrices {
-                essence_capacity: 100,
-                rune_click_amount: 200,
-                rune_conversion_amount: 300,
-                extra_forge_item_chance: 400,
-                forge_item_amount: 500,
-                sword_limit: 600,
-                ring_limit: 700,
+                vis_capacity: 100,
+                vis_click_amount_cost: 200,
+                vis_conversion_amount_cost: 300,
                 auto_click_interval: 800,
             },
-            current_tab: MenuTab::Clicking,
-            BuildingProgress: BuildingStuffProgress::ForgeFoundation,
-            Potions: AlchemyPotions::Health,
-            FireStages: ForgeFireStages::Kindling,
-            WaterfallStages: AlchemyWaterfallStages::Drip,
-            gatherQuest: SecondQuest::CollectWaterRunes,
-            forgeQuest: ForgeQuest::BuildForge,
-            alchemyQuest: AlchemyQuest::BuildAlchemyLab,
-            shopQuest: ThirdQuest::BuildShop,
-            enchantingQuest: EnchantingQuest::InfuseBasicItems,
-            equipmentQuest: EquipmentQuest::EquipBasicGear,
+            current_tab: MenuTab::Gathering,
+            // Thauminomicon default
+            skills: vec![
+                SkillNode {
+                    id: "basic_crystals",
+                    name: "Basic Crystals",
+                    description: "Foundational Crystals and minor inscriptions.",
+                    position: egui::pos2(300.0, 300.0),
+                    unlocked: true,
+                    prerequisites: vec![],
+                },
+                SkillNode {
+                    id: "essence_control",
+                    name: "Essence Control",
+                    description: "Harness and shape raw vis.",
+                    position: egui::pos2(600.0, 360.0),
+                    unlocked: false,
+                    prerequisites: vec!["basic_crystals"],
+                },
+                SkillNode {
+                    id: "advanced_crystals",
+                    name: "Advanced Crystals",
+                    description: "Complex runic patterns and bindings.",
+                    position: egui::pos2(900.0, 300.0),
+                    unlocked: false,
+                    prerequisites: vec!["essence_control"],
+                },
+                SkillNode {
+                    id: "forging",
+                    name: "Forging",
+                    description: "Imbue metals with magic.",
+                    position: egui::pos2(900.0, 480.0),
+                    unlocked: false,
+                    prerequisites: vec!["essence_control"],
+                },
+                SkillNode {
+                    id: "alchemy_basics",
+                    name: "Alchemy Basics",
+                    description: "Distill and combine essences.",
+                    position: egui::pos2(1200.0, 300.0),
+                    unlocked: false,
+                    prerequisites: vec!["advanced_crystals"],
+                },
+            ],
+            cam_offset: egui::vec2(0.0, 0.0),
+            cam_zoom: 1.0,
+            recipes: RecipesFile { crystals: IndexMap::new() },
         }
+    }
+}
+
+impl Clicker {
+    fn from_save_with_recipes(save: Savefile, recipes: RecipesFile) -> Self {
+        let mut clicker_default = Clicker::default();
+        clicker_default.crystals = save.inventory.crystals;
+        clicker_default.recipes = recipes;
+        // Initialize from saved upgrades
+        clicker_default.visClickAmount = save.upgrades.visClickAmount;
+        clicker_default
+    }
+
+    fn can_unlock(&self, id: &str) -> bool {
+        if let Some(node) = self.skills.iter().find(|n| n.id == id) {
+            if node.unlocked {
+                return false; // already unlocked
+            }
+            for pre in &node.prerequisites {
+                if let Some(req) = self.skills.iter().find(|n| &n.id == pre) {
+                    if !req.unlocked {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    fn unlock_skill(&mut self, id: &str) {
+        if !self.can_unlock(id) {
+            return;
+        }
+
+        match id {
+            // Essence Control costs 50 vis to unlock
+            "essence_control" => {
+                if self.vis >= 50 {
+                    self.vis -= 50;
+                    if let Some(n) = self.skills.iter_mut().find(|n| n.id == id) {
+                        n.unlocked = true;
+                        self.souls = self.souls.saturating_add(1);
+                    }
+                    // Unlock secondary crystal crafting
+                    self.unlocks.secondary_crystals = true;
+                }
+            }
+            // Other nodes are free for now
+            _ => {
+                if let Some(n) = self.skills.iter_mut().find(|n| n.id == id) {
+                    n.unlocked = true;
+                    self.souls = self.souls.saturating_add(1);
+                }
+            }
+        }
+    }
+
+    fn show_thauminomicon(&mut self, ui: &mut egui::Ui) {
+        ui.heading(egui::RichText::new("Thauminomicon").color(egui::Color32::WHITE));
+        ui.separator();
+
+        egui::ScrollArea::both()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                let canvas_size = egui::vec2(3000.0, 3000.0);
+                let (rect, response) = ui.allocate_exact_size(canvas_size, egui::Sense::drag());
+                let painter = ui.painter_at(rect);
+
+                // Input handling: zoom with Ctrl+Wheel, pan with middle-mouse drag
+                let scroll_delta = ui.input(|i| i.smooth_scroll_delta.y);
+                let ctrl = ui.input(|i| i.modifiers.ctrl);
+                if ctrl && scroll_delta.abs() > 0.0 {
+                    let zoom_factor = (1.0 + (scroll_delta * 0.001)).clamp(0.5, 1.5);
+                    self.cam_zoom = (self.cam_zoom * zoom_factor).clamp(0.25, 3.0);
+                }
+                let pointer_delta = ui.input(|i| i.pointer.delta());
+                let middle_down = ui.input(|i| i.pointer.middle_down());
+                if middle_down {
+                    self.cam_offset += pointer_delta;
+                }
+
+                // Helpers
+                let to_screen = |p: egui::Pos2| -> egui::Pos2 {
+                    egui::pos2(
+                        rect.min.x + self.cam_offset.x + p.x * self.cam_zoom,
+                        rect.min.y + self.cam_offset.y + p.y * self.cam_zoom,
+                    )
+                };
+                let node_size = egui::vec2(180.0, 64.0) * self.cam_zoom;
+
+                // Draw edges first
+                for node in &self.skills {
+                    for pre in &node.prerequisites {
+                        if let Some(req) = self.skills.iter().find(|n| &n.id == pre) {
+                            let a = to_screen(req.position);
+                            let b = to_screen(node.position);
+                            let col = if req.unlocked { egui::Color32::from_rgb(80, 200, 120) } else { egui::Color32::GRAY };
+                            painter.line_segment([a, b], egui::Stroke { width: 2.0, color: col });
+                        }
+                    }
+                }
+
+                                // Draw nodes with enlarge/vibrate for unlockable and robust hover detection
+                let mut clicked_id: Option<String> = None;
+                let pointer_pos = ui.ctx().pointer_latest_pos();
+                for node in &self.skills {
+                    // Base center and size
+                    let mut center = to_screen(node.position);
+                    let mut size = node_size;
+                    let can_unlock = self.can_unlock(node.id);
+
+                    // Enlarge/vibrate effect for unlockable nodes
+                    if can_unlock {
+                        let t = ui.ctx().input(|i| i.time as f32);
+                        let scale = 1.08 + 0.02 * (t * 3.5).sin();
+                        size *= scale;
+                        let phase = (node.id.as_bytes()[0] as f32) * 0.37;
+                        let jiggle = egui::vec2(
+                            (t * 9.0 + phase).sin() * 1.5 * self.cam_zoom,
+                            (t * 11.0 + phase * 0.7).cos() * 1.5 * self.cam_zoom,
+                        );
+                        center += jiggle;
+                    }
+
+                    let rect_node = egui::Rect::from_center_size(center, size);
+                    let color = if node.unlocked {
+                        egui::Color32::from_rgb(50, 190, 90)
+                    } else if can_unlock {
+                        egui::Color32::from_rgb(60, 140, 220)
+                    } else {
+                        egui::Color32::from_gray(50)
+                    };
+
+                    painter.rect_filled(rect_node, egui::Rounding::same(10), color);
+                    painter.rect_stroke(
+                        rect_node,
+                        egui::Rounding::same(10),
+                        egui::Stroke { width: 2.0, color: egui::Color32::BLACK },
+                        egui::StrokeKind::Outside,
+                    );
+                    painter.text(
+                        rect_node.center(),
+                        egui::Align2::CENTER_CENTER,
+                        node.name,
+                        egui::FontId::proportional(16.0 * self.cam_zoom),
+                        egui::Color32::WHITE,
+                    );
+
+                    if let Some(pp) = pointer_pos {
+                        if rect_node.contains(pp) {
+                            egui::containers::show_tooltip_for(
+                                ui.ctx(),
+                                ui.layer_id(),
+                                egui::Id::new(format!("node_tt_{}", node.id)),
+                                &rect_node,
+                                |ui: &mut egui::Ui| {
+                                    ui.label(node.description);
+                                    if node.id == "essence_control" {
+                                        ui.separator();
+                                        ui.label(format!("Cost: 50 Vis (you have {})", self.vis));
+                                    }
+                                },
+                            );
+                            if ui.input(|i| i.pointer.primary_clicked()) {
+                                clicked_id = Some(node.id.to_string());
+                            }
+                        }
+                    }
+                }if let Some(id) = clicked_id {
+                    self.unlock_skill(&id);
+                }
+            });
     }
 }
 
@@ -323,563 +434,95 @@ fn styled_tab(label: &str) -> egui::Button {
 }
 
 impl Clicker {
-    fn show_clicking(&mut self, ui: &mut egui::Ui) {
-        ui.heading(egui::RichText::new("Clicking Menu").color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Essence: {}/{}", self.essence, self.maxEssence)).color(egui::Color32::WHITE));
+    fn show_gathering(&mut self, ui: &mut egui::Ui) {
+        ui.heading(egui::RichText::new("Gather Menu").color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new(format!("Vis: {}/{}", self.vis, self.maxVis)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Souls: {}", self.souls)).color(egui::Color32::WHITE));
-        // Display runes
-        ui.horizontal(|ui| {
-            for (rune, amount) in &self.runes {
-                ui.label(egui::RichText::new(format!("{}: {}", rune, amount)).color(egui::Color32::WHITE));
-            }
-        });
-        // Display advanced runes
-        ui.horizontal(|ui| {
-            for (rune, amount) in &self.advRunes {
-                ui.label(egui::RichText::new(format!("{}: {}", rune, amount)).color(egui::Color32::WHITE));
-            }
-        });
 
         // Clicking button
         if ui.add(styled_button("Conjure resources")).clicked() {
-            self.essence = (self.essence + self.essenceClickAmount).min(self.maxEssence);
+            self.vis = (self.vis + self.visClickAmount).min(self.maxVis);
             let mut rng = rand::thread_rng();
 
+            // Crystal gain: with the same chance as runes, add exactly one base crystal
             if rng.gen_range(0..100) < self.runeChance {
-                let keys: Vec<String> = self.runes.keys().cloned().collect();
-                let chosen = &keys[rng.gen_range(0..keys.len())];
-                *self.runes.get_mut(chosen.as_str()).unwrap() += self.runeClickAmount;
+                let base_crystals = ["aer", "aqua", "ignis", "ordo", "perditio", "terra"];
+                let chosen_idx = rng.gen_range(0..base_crystals.len());
+                let chosen = base_crystals[chosen_idx];
+                if let Some(val) = self.crystals.get_mut(chosen) {
+                    *val += self.crystalClickAmount;
+                } else {
+                    // In case save didn't have the key, insert it
+                    self.crystals.insert(chosen.to_string(), 1);
+                }
             }
         }
-        ui.horizontal(|ui| {
-            if let Some(&fire) = self.runes.get("Fire Rune") {
-                if ui.add_enabled(self.essence >= self.runeConversionCost && self.unlocks.essenceConversion == true, styled_button(&format!("Convert {} Essence to Fire Rune", self.runeConversionCost))).clicked() {
-                    self.essence -= self.runeConversionCost;
-                    *self.runes.get_mut("Fire Rune").unwrap() += self.runeConversionAmount;
-                }
-            }
-            if let Some(&water) = self.runes.get("Water Rune") {
-                if ui.add_enabled(self.essence >= self.runeConversionCost && self.unlocks.essenceConversion == true, styled_button(&format!("Convert {} Essence to Water Rune", self.runeConversionCost))).clicked() {
-                    self.essence -= self.runeConversionCost;
-                    *self.runes.get_mut("Water Rune").unwrap() += self.runeConversionAmount;
-                }
-            }
-            if let Some(&earth) = self.runes.get("Earth Rune") {
-                if ui.add_enabled(self.essence >= self.runeConversionCost && self.unlocks.essenceConversion == true, styled_button(&format!("Convert {} Essence to Earth Rune", self.runeConversionCost))).clicked() {
-                    self.essence -= self.runeConversionCost;
-                    *self.runes.get_mut("Earth Rune").unwrap() += self.runeConversionAmount;
-                }
-            }
-            if let Some(&air) = self.runes.get("Air Rune") {
-                if ui.add_enabled(self.essence >= self.runeConversionCost && self.unlocks.essenceConversion == true, styled_button(&format!("Convert {} Essence to Air Rune", self.runeConversionCost))).clicked() {
-                    self.essence -= self.runeConversionCost;
-                    *self.runes.get_mut("Air Rune").unwrap() += self.runeConversionAmount;
-                }
-            }
-        });
-        ui.horizontal(|ui| {
-            if let Some(&fire) = self.runes.get("Fire Rune") {
-                if ui.add_enabled(fire >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Plasma")).clicked() {
-                    *self.runes.get_mut("Fire Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Plasma Rune").unwrap() += self.advRuneConversionAmount;
-                }
-            }
-            if let Some(&air) = self.runes.get("Air Rune") {
-                if ui.add_enabled(air >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Gust")).clicked() {
-                    *self.runes.get_mut("Air Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Gust Rune").unwrap() += self.advRuneConversionAmount;
-                }
-            }
-            if let Some(&earth) = self.runes.get("Earth Rune") {
-                if ui.add_enabled(earth >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Metal")).clicked() {
-                    *self.runes.get_mut("Earth Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Metal Rune").unwrap() += self.advRuneConversionAmount;
-                }
-            }
-            if let Some(&water) = self.runes.get("Water Rune") {
-                if ui.add_enabled(water >= 5 && self.unlocks.advancedRunes == true, styled_button("Make Mist")).clicked() {
-                    *self.runes.get_mut("Water Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Mist Rune").unwrap() += self.advRuneConversionAmount;
-                }
-            }
-        });
-    }
 
-    fn show_smithing(&mut self, ui: &mut egui::Ui) {
-        ui.heading(egui::RichText::new("Smithing Menu").color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Coins: {}", self.coins)).color(egui::Color32::WHITE));
-
-            let metal_runes: u32 = *self.advRunes.get("Metal Rune").unwrap_or(&0);
-            let mist_runes: u32 = *self.advRunes.get("Mist Rune").unwrap_or(&0);
-            let plasma_runes: u32 = *self.advRunes.get("Plasma Rune").unwrap_or(&0);
-            let gust_runes: u32 = *self.advRunes.get("Gust Rune").unwrap_or(&0);
-            let bronze: u32 = *self.alloys.get("Bronze").unwrap_or(&0);
-            let iron: u32 = *self.alloys.get("Iron").unwrap_or(&0);
-            let steel: u32 = *self.alloys.get("Steel").unwrap_or(&0);
-            let mithril: u32 = *self.alloys.get("Mithril").unwrap_or(&0);
-            let adamantite: u32 = *self.alloys.get("Adamantite").unwrap_or(&0);
-            let runite: u32 = *self.alloys.get("Runite").unwrap_or(&0);
-            let dragonite: u32 = *self.alloys.get("Dragonite").unwrap_or(&0);
-
-        ui.horizontal(|ui| {
-            for sword in [
-                "Metal Sword", "Bronze Sword", "Iron Sword", "Steel Sword",
-                "Mithril Sword", "Adamantite Sword", "Runite Sword", "Dragonite Sword"
-            ] {
-                let count = self.forgableSwords.get(sword).unwrap_or(&0);
-                ui.label(egui::RichText::new(format!("{}: {}/{}", sword, count, self.swordLimit)).color(egui::Color32::WHITE));
-            }
-        });
-
-        ui.horizontal(|ui| {
-            for ring in [
-                "Metal Ring", "Bronze Ring", "Iron Ring", "Steel Ring",
-                "Mithril Ring", "Adamantite Ring", "Runite Ring", "Dragonite Ring"
-            ] {
-                let count = self.forgableRings.get(ring).unwrap_or(&0);
-                ui.label(egui::RichText::new(format!("{}: {}/{}", ring, count, self.ringLimit)).color(egui::Color32::WHITE));
-            }
-        });
-
-        ui.horizontal(|ui| {
-            for alloy in [
-                "Bronze", "Iron", "Steel", "Mithril",
-                "Adamantite", "Runite", "Dragonite"
-            ] {
-                let count = self.alloys.get(alloy).unwrap_or(&0);
-                ui.label(egui::RichText::new(format!("{}: {}", alloy, count)).color(egui::Color32::WHITE));
-            }
-        });
-         // Smithing actions
-
-        if self.unlocks.forgingBasics {
-            ui.horizontal(|ui| {
-                if ui.add_enabled(metal_runes >= 5, styled_button("Forge Metal Sword")).clicked() {
-                    *self.forgableSwords.get_mut("Metal Sword").unwrap() += 1;
-                    *self.advRunes.get_mut("Metal Rune").unwrap() -= 5;
-                }
-                if ui.add_enabled(bronze >= 5, styled_button("Forge Bronze Sword")).clicked() {
-                    *self.forgableSwords.get_mut("Bronze Sword").unwrap() += 1;
-                    *self.alloys.get_mut("Bronze").unwrap() -= 5;
-                }
-                if ui.add_enabled(iron >= 5, styled_button("Forge Iron Sword")).clicked() {
-                    *self.forgableSwords.get_mut("Iron Sword").unwrap() += 1;
-                    *self.alloys.get_mut("Iron").unwrap() -= 5;
-                }
-                if ui.add_enabled(steel >= 5, styled_button("Forge Steel Sword")).clicked() {
-                    *self.forgableSwords.get_mut("Steel Sword").unwrap() += 1;
-                    *self.alloys.get_mut("Steel").unwrap() -= 5;
-                }
-                if ui.add_enabled(mithril >= 5, styled_button("Forge Mithril Sword")).clicked() {
-                    *self.forgableSwords.get_mut("Mithril Sword").unwrap() += 1;
-                    *self.alloys.get_mut("Mithril").unwrap() -= 5;
-                }
-                if ui.add_enabled(adamantite >= 5, styled_button("Forge Adamantite Sword")).clicked() {
-                    *self.forgableSwords.get_mut("Adamantite Sword").unwrap() += 1;
-                    *self.alloys.get_mut("Adamantite").unwrap() -= 5;
-                }
-                if ui.add_enabled(runite >= 5, styled_button("Forge Runite Sword")).clicked() {
-                    *self.forgableSwords.get_mut("Runite Sword").unwrap() += 1;
-                    *self.alloys.get_mut("Runite").unwrap() -= 5;
-                }
-                if ui.add_enabled(dragonite >= 5, styled_button("Forge Dragonite Sword")).clicked() {
-                    *self.forgableSwords.get_mut("Dragonite Sword").unwrap() += 1;
-                    *self.alloys.get_mut("Dragonite").unwrap() -= 5;
-                }
-            });
-        }
-
-        if self.unlocks.forgingBasics {
-            ui.horizontal(|ui| {
-                if ui.add_enabled(metal_runes >= 3, styled_button("Forge Metal Ring")).clicked() {
-                    *self.forgableRings.get_mut("Metal Ring").unwrap() += 1;
-                    *self.advRunes.get_mut("Metal Rune").unwrap() -= 3;
-                }
-                if ui.add_enabled(bronze >= 3, styled_button("Forge Bronze Ring")).clicked() {
-                    *self.forgableRings.get_mut("Bronze Ring").unwrap() += 1;
-                    *self.alloys.get_mut("Bronze").unwrap() -= 3;
-                }
-                if ui.add_enabled(iron >= 3, styled_button("Forge Iron Ring")).clicked() {
-                    *self.forgableRings.get_mut("Iron Ring").unwrap() += 1;
-                    *self.alloys.get_mut("Iron").unwrap() -= 3;
-                }
-                if ui.add_enabled(steel >= 3, styled_button("Forge Steel Ring")).clicked() {
-                    *self.forgableRings.get_mut("Steel Ring").unwrap() += 1;
-                    *self.alloys.get_mut("Steel").unwrap() -= 3;
-                }
-                if ui.add_enabled(mithril >= 3, styled_button("Forge Mithril Ring")).clicked() {
-                    *self.forgableRings.get_mut("Mithril Ring").unwrap() += 1;
-                    *self.alloys.get_mut("Mithril").unwrap() -= 3;
-                }
-                if ui.add_enabled(adamantite >= 3, styled_button("Forge Adamantite Ring")).clicked() {
-                    *self.forgableRings.get_mut("Adamantite Ring").unwrap() += 1;
-                    *self.alloys.get_mut("Adamantite").unwrap() -= 3;
-                }
-                if ui.add_enabled(runite >= 3, styled_button("Forge Runite Ring")).clicked() {
-                    *self.forgableRings.get_mut("Runite Ring").unwrap() += 1;
-                    *self.alloys.get_mut("Runite").unwrap() -= 3;
-                }
-                if ui.add_enabled(dragonite >= 3, styled_button("Forge Dragonite Ring")).clicked() {
-                    *self.forgableRings.get_mut("Dragonite Ring").unwrap() += 1;
-                    *self.alloys.get_mut("Dragonite").unwrap() -= 3;
-                }
-            });
-        }
-
-        if self.unlocks.alloyForging {
-            ui.horizontal(|ui| {
-                if ui.add_enabled(
-                    metal_runes >= 5 &&
-                    mist_runes >= 3 &&
-                    plasma_runes >= 3 &&
-                    gust_runes >= 3,
-                    styled_button("Forge Bronze Alloy Cost: 5 Metal, 3 Mist, 3 Plasma, 3 Gust")
-                ).clicked() {
-                    *self.alloys.get_mut("Bronze").unwrap() += 1;
-                    *self.advRunes.get_mut("Metal Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Mist Rune").unwrap() -= 3;
-                    *self.advRunes.get_mut("Plasma Rune").unwrap() -= 3;
-                    *self.advRunes.get_mut("Gust Rune").unwrap() -= 3;
-                }
-                if ui.add_enabled(
-                    bronze >= 3 &&
-                    mist_runes >= 5 &&
-                    plasma_runes >= 5 &&
-                    gust_runes >= 5,
-                    styled_button("Forge Iron Alloy Cost: 3 Bronze 5 Mist, 5 Plasma, 5 Gust")
-                ).clicked() {
-                    *self.alloys.get_mut("Iron").unwrap() += 1;
-                    *self.alloys.get_mut("Bronze").unwrap() -= 3;
-                    *self.advRunes.get_mut("Mist Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Plasma Rune").unwrap() -= 5;
-                    *self.advRunes.get_mut("Gust Rune").unwrap() -= 5;
-                }
-                if ui.add_enabled(
-                    iron >= 3 &&
-                    mist_runes >= 7 &&
-                    plasma_runes >= 7 &&
-                    gust_runes >= 7, styled_button("Forge Steel Alloy Cost: 3 Iron, 7 Mist, 7 Plasma, 7 Gust")
-                ).clicked() {
-                    *self.alloys.get_mut("Steel").unwrap() += 1;
-                    *self.alloys.get_mut("Iron").unwrap() -= 3;
-                    *self.advRunes.get_mut("Mist Rune").unwrap() -= 7;
-                    *self.advRunes.get_mut("Plasma Rune").unwrap() -= 7;
-                    *self.advRunes.get_mut("Gust Rune").unwrap() -= 7;
-                }
-                if ui.add_enabled(
-                    steel >= 3 &&
-                    mist_runes >= 10 &&
-                    plasma_runes >= 10 &&
-                    gust_runes >= 10,
-                    styled_button("Forge Mithril Alloy Cost: 3 Steel, 10 Mist, 10 Plasma, 10 Gust")
-                ).clicked() {
-                    *self.alloys.get_mut("Mithril").unwrap() += 1;
-                    *self.alloys.get_mut("Steel").unwrap() -= 3;
-                    *self.advRunes.get_mut("Mist Rune").unwrap() -= 10;
-                    *self.advRunes.get_mut("Plasma Rune").unwrap() -= 10;
-                    *self.advRunes.get_mut("Gust Rune").unwrap() -= 10;
-                }
-                if ui.add_enabled(
-                    mithril >= 3 &&
-                    mist_runes >= 15 &&
-                    plasma_runes >= 15 &&
-                    gust_runes >= 15,
-                    styled_button("Forge Adamantite Alloy Cost: 3 Mithril, 15 Mist, 15 Plasma, 15 Gust")
-                ).clicked() {
-                    *self.alloys.get_mut("Adamantite").unwrap() += 1;
-                    *self.alloys.get_mut("Mithril").unwrap() -= 3;
-                    *self.advRunes.get_mut("Mist Rune").unwrap() -= 15;
-                    *self.advRunes.get_mut("Plasma Rune").unwrap() -= 15;
-                    *self.advRunes.get_mut("Gust Rune").unwrap() -= 15;
-                }
-                if ui.add_enabled(
-                    adamantite >= 3 &&
-                    mist_runes >= 20 &&
-                    plasma_runes >= 20 &&
-                    gust_runes >= 20,
-                    styled_button("Forge Runite Alloy Cost: 3 Adamantite, 20 Mist, 20 Plasma, 20 Gust")
-                ).clicked() {
-                    *self.alloys.get_mut("Runite").unwrap() += 1;
-                    *self.alloys.get_mut("Adamantite").unwrap() -= 3;
-                    *self.advRunes.get_mut("Mist Rune").unwrap() -= 20;
-                    *self.advRunes.get_mut("Plasma Rune").unwrap() -= 20;
-                    *self.advRunes.get_mut("Gust Rune").unwrap() -= 20;
-                }
-                if ui.add_enabled(
-                    runite >= 3 &&
-                    mist_runes >= 25 &&
-                    plasma_runes >= 25 &&
-                    gust_runes >= 25,
-                    styled_button("Forge Dragonite Alloy Cost: 3 Runite, 25 Mist, 25 Plasma, 25 Gust")
-                ).clicked() {
-                    *self.alloys.get_mut("Dragonite").unwrap() += 1;
-                    *self.alloys.get_mut("Runite").unwrap() -= 3;
-                    *self.advRunes.get_mut("Mist Rune").unwrap() -= 25;
-                    *self.advRunes.get_mut("Plasma Rune").unwrap() -= 25;
-                    *self.advRunes.get_mut("Gust Rune").unwrap() -= 25;
-                }
-            });
-        }
-
-         // Building progression
-
-        match self.BuildingProgress {
-            BuildingStuffProgress::ForgeFoundation => {
-                if let Some(&metal) = self.advRunes.get("Metal Rune") {
-                    if ui.add_enabled(metal >= 5, styled_button("Buy Upgrade 5 Metal Runes")).clicked() {
-                        *self.advRunes.get_mut("Metal Rune").unwrap() -= 5;
-                        self.BuildingProgress = BuildingStuffProgress::ForgeAnvil;
-                        self.maxEssence += 25;
+        // Secondary crystals crafting (from recipes.json), unlocked by Essence Control
+        if self.unlocks.secondary_crystals {
+            ui.separator();
+            ui.label(egui::RichText::new("secondary crystals").color(egui::Color32::LIGHT_BLUE));
+            if let Some(categories) = self.recipes.crystals.get("secondary") {
+                // Render buttons left-to-right and wrap when needed
+                ui.horizontal_wrapped(|ui| {
+                    for (name, costs) in categories {
+                        // Check if we can afford costs
+                        let mut can_afford = true;
+                        for (req, &amt) in costs {
+                            if self.crystals.get(req).copied().unwrap_or(0) < amt {
+                                can_afford = false;
+                                break;
+                            }
+                        }
+                        let label = format!("Make {}", name);
+                        if ui.add_enabled(can_afford, styled_button(&label)).clicked() {
+                            // Deduct inputs
+                            for (req, &amt) in costs {
+                                if let Some(entry) = self.crystals.get_mut(req) {
+                                    *entry = entry.saturating_sub(amt);
+                                }
+                            }
+                            // Add output
+                            *self.crystals.entry(name.to_string()).or_insert(0) += 1;
+                        }
                     }
-                }
-            }
-
-            BuildingStuffProgress::ForgeAnvil => {
-                if let Some(&metal) = self.advRunes.get("Metal Rune") {
-                    if ui.add_enabled(metal >= 10, styled_button("Buy Upgrade 10 Metal Runes")).clicked() {
-                        *self.advRunes.get_mut("Metal Rune").unwrap() -= 10;
-                        self.BuildingProgress = BuildingStuffProgress::ForgeFireplace;
-                        self.maxEssence += 25;
-                        self.unlocks.forgingBasics = true;
-                    }
-                }
-            }
-            BuildingStuffProgress::ForgeFireplace => {
-                if let Some(&metal) = self.advRunes.get("Metal Rune") {
-                    if ui.add_enabled(metal >= 15, styled_button("Buy Upgrade 15 Metal Runes")).clicked() {
-                        *self.advRunes.get_mut("Metal Rune").unwrap() -= 15;
-                        self.BuildingProgress = BuildingStuffProgress::ForgeWalls;
-                        self.maxEssence += 25;
-                        self.FireStages = ForgeFireStages::Kindling;
-                    }
-                }
-            }
-            BuildingStuffProgress::ForgeWalls => {
-                if let Some(&metal) = self.advRunes.get("Metal Rune") {
-                    if ui.add_enabled(metal >= 20, styled_button("Buy Upgrade 20 Metal Runes")).clicked() {
-                        *self.advRunes.get_mut("Metal Rune").unwrap() -= 20;
-                        self.BuildingProgress = BuildingStuffProgress::ForgeRoof;
-                        self.maxEssence += 25;
-                    }
-                }
-            }
-            BuildingStuffProgress::ForgeRoof => {
-                if let Some(&metal) = self.advRunes.get("Metal Rune") {
-                    if ui.add_enabled(metal >= 25, styled_button("Buy Upgrade 25 Metal Runes")).clicked() {
-                        *self.advRunes.get_mut("Metal Rune").unwrap() -= 25;
-                        self.unlocks.forgingBasics = true;
-                        self.BuildingProgress = BuildingStuffProgress::StoreFront;
-                        self.maxEssence += 50;
-                        self.unlocks.alloyForging = true;
-                    }
-                }
-            }
-            BuildingStuffProgress::StoreFront => {
-                if ui.add_enabled(*self.forgableSwords.get("Bronze Sword").unwrap_or(&0) >= 2 && *self.forgableRings.get("Bronze Ring").unwrap_or(&0) >= 2, styled_button("Buy Upgrade 2 Bronze Swords and 2 Bronze Rings")).clicked() {
-                    *self.forgableSwords.get_mut("Bronze Sword").unwrap() -= 2;
-                    *self.forgableRings.get_mut("Bronze Ring").unwrap() -= 2;
-                    self.BuildingProgress = BuildingStuffProgress::StoreShelves;
-                    self.maxEssence += 50;
-                }
-            }
-            BuildingStuffProgress::StoreShelves => {
-                if ui.add_enabled(iron >= 10, styled_button("Buy Upgrade 10 iron")).clicked() {
-                    *self.alloys.get_mut("Iron").unwrap() -= 10;
-                    self.BuildingProgress = BuildingStuffProgress::AlchemyBench;
-                    self.maxEssence += 50;
-                    self.swordLimit += 15;
-                    self.ringLimit += 15;
-                }
-            }
-            BuildingStuffProgress::AlchemyBench => {
-                if ui.add_enabled(self.coins >= 1000, styled_button("Buy Upgrade 1000 coins")).clicked() {
-                    self.coins -= 1000;
-                    self.BuildingProgress = BuildingStuffProgress::AlchemyStand;
-                    self.maxEssence += 100;
-                    self.unlocks.alchemyBasics = true;
-                    self.WaterfallStages = AlchemyWaterfallStages::Drip;
-                }
-            }
-            BuildingStuffProgress::AlchemyStand => {
-                if ui.add_enabled(self.coins >= 5000, styled_button("Buy Upgrade 5000 coins")).clicked() {
-                    self.coins -= 5000;
-                    self.BuildingProgress = BuildingStuffProgress::Complete;
-                    self.maxEssence += 100;
-                }
-            }
-            BuildingStuffProgress::Complete => {
-                ui.label(egui::RichText::new("All buildings completed!").color(egui::Color32::WHITE));
+                });
             }
         }
-        // Placeholder for smithing actions
-
-
     }
 
     fn show_upgrades(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Upgrades Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new("Purchase upgrades to enhance clicks or crafting.").color(egui::Color32::WHITE));
 
-        // Upgrade 1: Soul to Essence Conversion
-        if ui.add_enabled(self.souls >= 1, styled_button("Buy Upgrade (1 soul)")).clicked() {
+        // Upgrade 1: Soul to vis Conversion
+        if ui.add_enabled(self.souls >= 1, styled_button("Upgrade Vis Click Amount (1 soul)")).clicked() {
             if safe_subtract(&mut self.souls, 1) {
-                self.essenceClickAmount += 1;
-                self.unlocks.essenceConversion = true;
+                self.visClickAmount += 1;
             }
         }
 
-        // Upgrade 2: Essence Capacity
-        if ui.add_enabled(self.essence >= 50, styled_button("Upgrade Essence Capacity (+50) (50 Essence)")).clicked() {
-            if safe_subtract(&mut self.essence, 50) {
-                self.maxEssence += 50;
+        // Upgrade 2: vis Capacity
+        if ui.add_enabled(self.vis >= 50, styled_button("Upgrade Vis Capacity (+50) (50 Vis)")).clicked() {
+            if safe_subtract(&mut self.vis, 50) {
+                self.maxVis += 50;
             }
         }
 
-        // Upgrade 3: Rune Click Amount
-        if ui.add_enabled(self.unlocks.advancedRunes && self.essence >= 200, styled_button("Upgrade Rune Click Amount (+1) (200 Essence)")).clicked() {
-            if safe_subtract(&mut self.essence, 200) {
-                self.runeClickAmount += 1;
+        // Upgrade 3: Vis Click Amount
+        if ui.add_enabled(self.vis >= 200, styled_button("Upgrade Vis Click Amount (+1) (200 Vis)")).clicked() {
+            if safe_subtract(&mut self.vis, 200) {
+                self.crystalClickAmount += 1;
             }
         }
 
-        // Upgrade 4: Rune Conversion Amount
-        if ui.add_enabled(self.unlocks.essenceConversion && self.essence >= 300, styled_button("Upgrade Rune Conversion Amount (+1) (300 Essence)")).clicked() {
-            if safe_subtract(&mut self.essence, 300) {
-                self.runeConversionAmount += 1;
-            }
-        }
-
-        // Upgrade 5: Extra Forge Item Chance
-        if ui.add_enabled(self.unlocks.forgingBasics && self.essence >= 400, styled_button("Upgrade Extra Forge Item Chance (+5%) (400 Essence)")).clicked() {
-            if safe_subtract(&mut self.essence, 400) {
-                self.extraForgeItemChance += 5;
-            }
-        }
-
-        // Upgrade 6: Auto Clicking
-        if ui.add_enabled(self.unlocks.autoCliking && self.forgableSwords.get("Steel Sword").unwrap_or(&0) >= &1, styled_button("Upgrade Auto Click Interval (-0.5s) (Steel Sword)")).clicked() {
+        // Upgrade 4: Auto Clicking
+        if ui.add_enabled(self.unlocks.autoCliking, styled_button("Upgrade Auto Click Interval (-0.5s)")).clicked() {
             if self.autoClickInterval >= 1.0 {
                 self.autoClickInterval -= 0.5;
             }
-            if let Some(sword) = self.forgableSwords.get_mut("Steel Sword") {
-                safe_subtract(sword, 1);
-            }
-        }
-    }
 
-
-    fn show_quests(&mut self, ui: &mut egui::Ui) {
-        ui.heading(egui::RichText::new("Quests Menu").color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new("Turn in runes for rewards.").color(egui::Color32::WHITE));
-        match self.fireQuest {
-            FirstQuest::CollectFireRunes => {
-                if let Some(&fire) = self.runes.get("Fire Rune") {
-                    if ui.add_enabled(fire >= 10, styled_button("Turn in 10 Fire Runes")).clicked() {
-                        *self.runes.get_mut("Fire Rune").unwrap() -= 10;
-                        self.unlocks.advancedRunes = true;
-                        self.fireQuest = FirstQuest::CollectPlasmaRunes;
-                        self.souls += 1;
-                    }
-                } 
-            }
-            FirstQuest::CollectPlasmaRunes => {
-                if let Some(&plasma) = self.advRunes.get("Plasma Rune") {
-                    if ui.add_enabled(plasma >= 3, styled_button("Turn in 3 Plasma Runes")).clicked() {
-                        *self.advRunes.get_mut("Plasma Rune").unwrap() -= 3;
-                        self.runeChance = 150;
-                        self.fireQuest = FirstQuest::Complete;
-                        self.souls += 1;
-                    }
-                }
-            }
-            FirstQuest::Complete => {
-                //hopes and prayers
-            }
         }
-        match self.gatherQuest {
-            SecondQuest::CollectWaterRunes => {
-                if let Some(&water) = self.runes.get("Water Rune") {
-                    if ui.add_enabled(water >= 10, styled_button("Turn in 10 Water Runes")).clicked() {
-                        *self.runes.get_mut("Water Rune").unwrap() -= 10;
-                        self.gatherQuest = SecondQuest::CollectMistRunes;
-                        self.souls += 1;
-                    }
-                } 
-            }
-            SecondQuest::CollectMistRunes => {
-                if let Some(&mist) = self.advRunes.get("Mist Rune") {
-                    if ui.add_enabled(mist >= 3, styled_button("Turn in 3 Mist Runes")).clicked() {
-                        *self.advRunes.get_mut("Mist Rune").unwrap() -= 3;
-                        self.gatherQuest = SecondQuest::Complete;
-                        self.souls += 1;
-                    }
-                }
-            }
-            SecondQuest::Complete => {
-                //hopes and prayers
-            }
-        }
-        match self.forgeQuest {
-            ForgeQuest::BuildForge => {
-                if let Some(&metal) = self.advRunes.get("Metal Rune") {
-                    if ui.add_enabled(metal >= 20, styled_button("Turn in 20 Metal Runes")).clicked() {
-                        *self.advRunes.get_mut("Metal Rune").unwrap() -= 20;
-                        self.forgeQuest = ForgeQuest::MakeBasicSword;
-                        self.souls += 1;
-                    }
-                } 
-            }
-            ForgeQuest::MakeBasicSword => {
-                if let Some(&metal_sword) = self.forgableSwords.get("Metal Sword") {
-                    if ui.add_enabled(metal_sword >= 1, styled_button("Turn in 1 Metal Sword")).clicked() {
-                        *self.forgableSwords.get_mut("Metal Sword").unwrap() -= 1;
-                        self.forgeQuest = ForgeQuest::MakeBasicRing;
-                        self.souls += 1;
-                    }
-                }
-            }
-            ForgeQuest::MakeBasicRing => {
-                if let Some(&metal_ring) = self.forgableRings.get("Metal Ring") {
-                    if ui.add_enabled(metal_ring >= 1, styled_button("Turn in 1 Metal Ring")).clicked() {
-                        *self.forgableRings.get_mut("Metal Ring").unwrap() -= 1;
-                        self.forgeQuest = ForgeQuest::MakeAlloys;
-                        self.souls += 1;
-                        self.unlocks.autoCliking = true;
-                    }
-                }
-            }
-            ForgeQuest::MakeAlloys => {
-                if let Some(&bronze) = self.alloys.get("Bronze") {
-                    if ui.add_enabled(bronze >= 15, styled_button("Turn in 15 Bronze")).clicked() {
-                        *self.alloys.get_mut("Bronze").unwrap() -= 15;
-                        self.forgeQuest = ForgeQuest::MakeAdvancedSword;
-                        self.souls += 1;
-                    }
-                }
-            }
-            ForgeQuest::MakeAdvancedSword => {
-                if let Some(&mithril_sword) = self.forgableSwords.get("Mithril Sword") {
-                    if ui.add_enabled(mithril_sword >= 1, styled_button("Turn in 1 Mithril Sword")).clicked() {
-                        *self.forgableSwords.get_mut("Bronze Sword").unwrap() -= 1;
-                        self.forgeQuest = ForgeQuest::MakeAdvancedRing;
-                        self.souls += 1;
-                    }
-                }
-            }
-            ForgeQuest::MakeAdvancedRing => {
-                if let Some(&mithril_ring) = self.forgableRings.get("Mithril Ring") {
-                    if ui.add_enabled(mithril_ring >= 1, styled_button("Turn in 1 Mithril Ring")).clicked() {
-                        *self.forgableRings.get_mut("Mithril Ring").unwrap() -= 1;
-                        self.forgeQuest = ForgeQuest::Complete;
-                        self.souls += 1;
-                    }
-                }
-            }
-            ForgeQuest::Complete => {
-                //hopes and prayers
-            }
-        }
-
     }
     fn show_equipment(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Equipment Menu").color(egui::Color32::WHITE));
@@ -899,17 +542,11 @@ impl Clicker {
     fn show_stat_breakdown(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Stat Break Down Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new("Detailed stats of your progress.").color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Essence Limit {}", self.maxEssence)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Essence per Click {}", self.essenceClickAmount)).color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new(format!("Vis Limit {}", self.maxVis)).color(egui::Color32::WHITE));
+        ui.label(egui::RichText::new(format!("Vis per Click {}", self.visClickAmount)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Rune Chance {}", self.runeChance)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Runes per Conversion {}", self.runeConversionAmount)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Forging Extra Item Chance {} (Does not apply to Alloys)", self.extraForgeItemChance)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Forging Item Amount {}", self.ForgeItemAmount)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Sword Limit {}", self.swordLimit)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Ring Limit {}", self.ringLimit)).color(egui::Color32::WHITE));
         // Placeholder for detailed stats
     }
-    
 }
 
 impl eframe::App for Clicker {
@@ -926,16 +563,15 @@ impl eframe::App for Clicker {
             self.autoClickTimer += dt;
             if self.autoClickTimer >= self.autoClickInterval {
                 self.autoClickTimer -= self.autoClickInterval;
-                self.essence = (self.essence + self.essenceClickAmount).min(self.maxEssence);
+                self.vis = (self.vis + self.visClickAmount).min(self.maxVis);
                 
             }
         }
 
         let bg_color = match self.current_tab {
-            MenuTab::Clicking => egui::Color32::from_rgb(40, 40, 80),
-            MenuTab::Smithing => egui::Color32::from_rgb(60, 30, 30),
+            MenuTab::Gathering => egui::Color32::from_rgb(40, 40, 80),
             MenuTab::Upgrades => egui::Color32::from_rgb(30, 60, 30),
-            MenuTab::Quests => egui::Color32::from_rgb(50, 50, 50),
+            MenuTab::Thauminomicon => egui::Color32::from_rgb(20, 20, 30),
             MenuTab::Equipment => egui::Color32::from_rgb(30, 30, 60),
             MenuTab::Achievements => egui::Color32::from_rgb(80, 40, 40),
             MenuTab::Settings => egui::Color32::from_rgb(50, 30, 70),
@@ -950,17 +586,14 @@ impl eframe::App for Clicker {
             )
             .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.add(styled_tab("Clicking")).clicked() {
-                    self.current_tab = MenuTab::Clicking;
-                }
-                if ui.add(styled_tab("Smithing")).clicked() {
-                    self.current_tab = MenuTab::Smithing;
+                if ui.add(styled_tab("Gather/Convert")).clicked() {
+                    self.current_tab = MenuTab::Gathering;
                 }
                 if ui.add(styled_tab("Upgrades")).clicked() {
                     self.current_tab = MenuTab::Upgrades;
                 }
-                if ui.add(styled_tab("Quests")).clicked() {
-                    self.current_tab = MenuTab::Quests;
+                if ui.add(styled_tab("Thauminomicon")).clicked() {
+                    self.current_tab = MenuTab::Thauminomicon;
                 }
                 if ui.add(styled_tab("Equipment")).clicked() {
                     self.current_tab = MenuTab::Equipment;
@@ -977,6 +610,19 @@ impl eframe::App for Clicker {
             });
         });
 
+        // Always-visible right side panel (inventory)
+        egui::SidePanel::right("inventory_panel")
+            .resizable(false)
+            .default_width(220.0)
+            .show(ctx, |ui| {
+                ui.heading(egui::RichText::new("Inventory").color(egui::Color32::WHITE));
+                ui.separator();
+                ui.label(egui::RichText::new("Crystals").color(egui::Color32::WHITE));
+                for (crystal, amount) in &self.crystals {
+                    ui.label(egui::RichText::new(format!("{}: {}", crystal, amount)).color(egui::Color32::WHITE));
+                }
+            });
+
         // Central panel content
         egui::CentralPanel::default()
             .frame(
@@ -985,10 +631,9 @@ impl eframe::App for Clicker {
             )
             .show(ctx, |ui| {
                 match self.current_tab {
-                    MenuTab::Clicking => self.show_clicking(ui),
-                    MenuTab::Smithing => self.show_smithing(ui),
+                    MenuTab::Gathering => self.show_gathering(ui),
                     MenuTab::Upgrades => self.show_upgrades(ui),
-                    MenuTab::Quests => self.show_quests(ui),
+                    MenuTab::Thauminomicon => self.show_thauminomicon(ui),
                     MenuTab::Equipment => self.show_equipment(ui),
                     MenuTab::Achievements => self.show_achievements(ui),
                     MenuTab::Settings => self.show_settings(ui),
@@ -997,4 +642,7 @@ impl eframe::App for Clicker {
             });
     }
 }
+
+
+
 
