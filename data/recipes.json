@@ -13,29 +13,29 @@
       "vitreus": { "aer": 5, "terra": 5 }
     },
     "tertiary": {
-      "besita": { "motus": 5, "victus": 5 },
+      "bestia": { "motus": 5, "victus": 5 },
       "exanimis": { "mortuus": 5, "motus": 5 },
       "herba": { "victus": 5, "terra": 5 },
       "instrumentum": { "metallum": 5, "potentia": 5 },
-      "preacatitio": { "aer": 5, "potentia": 5 },
+      "praecantatio": { "aer": 5, "potentia": 5 },
       "spiritus": { "mortuus": 5, "victus": 5 },
       "tenebrae": { "lux": 5, "vacous": 5 },
-      "viniculum": { "motus": 5, "perditio": 5 },
+      "vinculum": { "motus": 5, "perditio": 5 },
       "volatus": { "aer": 5, "motus": 5 }
     },
     "quaternary": {
-      "alkimia": { "preacatitio": 5, "aqua": 5 },
+      "alkimia": { "praecantatio": 5, "aqua": 5 },
       "alienis": { "tenebrae": 5, "vacous": 5 },
-      "auram": { "preacatitio": 5, "aer": 5 },
+      "auram": { "praecantatio": 5, "aer": 5 },
       "aversio": { "spiritus": 5, "perditio": 5 },
-      "cognito": { "spiritus": 5, "ignis": 5 },
+      "cognitio": { "spiritus": 5, "ignis": 5 },
       "desiderium": { "spiritus": 5, "vacous": 5 },
       "fabrico": { "permutatio": 5, "instrumentum": 5 },
       "humanus": { "spiritus": 5, "victus": 5 },
       "machina": { "instrumentum": 5, "motus": 5 },
-      "preamunio": { "spiritus": 5, "terra": 5 },
+      "praemunio": { "spiritus": 5, "terra": 5 },
       "sensus": { "sensus": 5, "spiritus": 5 },
-      "vitium": { "perditio": 5, "preacatitio": 5 }
+      "vitium": { "perditio": 5, "praecantatio": 5 }
     }
   }
 }

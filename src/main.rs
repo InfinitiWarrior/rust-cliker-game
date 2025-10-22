@@ -81,6 +81,8 @@ struct Clicker {
     cam_zoom: f32,
     // Data
     recipes: RecipesFile,
+    // Cached textures for crystal icons
+    textures: HashMap<String, egui::TextureHandle>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -233,6 +235,7 @@ impl Default for Clicker {
             cam_offset: egui::vec2(0.0, 0.0),
             cam_zoom: 1.0,
             recipes: RecipesFile { crystals: IndexMap::new() },
+            textures: HashMap::new(),
         }
     }
 }
@@ -245,6 +248,35 @@ impl Clicker {
         // Initialize from saved upgrades
         clicker_default.visClickAmount = save.upgrades.visClickAmount;
         clicker_default
+    }
+
+    fn get_crystal_icon(&mut self, ctx: &egui::Context, name: &str) -> Option<&egui::TextureHandle> {
+        if self.textures.contains_key(name) {
+            return self.textures.get(name);
+        }
+        // Attempt to load from assets/aspects/<name>.png, with a fallback to common misspelling
+        let try_paths = [
+            format!("assets/aspects/{}.png", name),
+            format!("assets/apsects/{}.png", name),
+        ];
+        for path in try_paths.iter() {
+            if let Ok(bytes) = std::fs::read(path) {
+                if let Ok(image) = image::load_from_memory(&bytes) {
+                    let rgba = image.to_rgba8();
+                    let size = [rgba.width() as usize, rgba.height() as usize];
+                    let pixels = rgba.as_raw();
+                    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels);
+                    let tex = ctx.load_texture(
+                        format!("crystal_{}", name),
+                        color_image,
+                        egui::TextureOptions::LINEAR,
+                    );
+                    self.textures.insert(name.to_string(), tex);
+                    return self.textures.get(name);
+                }
+            }
+        }
+        None
     }
 
     fn can_unlock(&self, id: &str) -> bool {
@@ -618,8 +650,22 @@ impl eframe::App for Clicker {
                 ui.heading(egui::RichText::new("Inventory").color(egui::Color32::WHITE));
                 ui.separator();
                 ui.label(egui::RichText::new("Crystals").color(egui::Color32::WHITE));
-                for (crystal, amount) in &self.crystals {
-                    ui.label(egui::RichText::new(format!("{}: {}", crystal, amount)).color(egui::Color32::WHITE));
+                // Avoid borrowing self immutably while calling a mutable method
+                let crystal_list: Vec<(String, u32)> = self
+                    .crystals
+                    .iter()
+                    .map(|(k, v)| (k.clone(), *v))
+                    .collect();
+                for (crystal, amount) in crystal_list {
+                    ui.horizontal(|ui| {
+                        if let Some(tex) = self.get_crystal_icon(ui.ctx(), &crystal) {
+                            ui.add(egui::Image::new((tex.id(), egui::vec2(18.0, 18.0))));
+                        }
+                        ui.label(
+                            egui::RichText::new(format!("{}: {}", crystal, amount))
+                                .color(egui::Color32::WHITE),
+                        );
+                    });
                 }
             });
 
@@ -642,6 +688,7 @@ impl eframe::App for Clicker {
             });
     }
 }
+
 
 
 
