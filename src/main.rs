@@ -60,6 +60,7 @@ enum MenuTab {
     Achievements,
     Settings,
     StatBreakDown,
+    Thauminomicon,
 }
 
 enum FirstQuest {
@@ -84,29 +85,6 @@ enum ForgeQuest {
     Complete,
 }
 
-enum AlchemyQuest {
-    BuildAlchemyLab,
-    MakeHealthPotion,
-    MakeManaPotion,
-    MakeStaminaPotion,
-    MakeAdvancedPotions,
-    Complete,
-}
-
-enum ThirdQuest {
-    BuildShop,
-    SellBasicItems,
-    SellAdvancedItems,
-    Complete,
-}
-
-enum EnchantingQuest {
-    InfuseBasicItems,
-    InfuseAdvancedItems,
-    UpgradeInfusions,
-    Complete,
-}
-
 enum EquipmentQuest {
     EquipBasicGear,
     EquipAdvancedGear,
@@ -126,15 +104,6 @@ enum BuildingStuffProgress {
     Complete,
 }
 
-enum AlchemyPotions {
-    Health,
-    Mana,
-    Stamina,
-    Strength,
-    Agility,
-    Intelligence,
-    Complete,
-}
 
 enum ForgeFireStages {
     Kindling,
@@ -149,18 +118,6 @@ enum ForgeFireStages {
     Complete,
 }
 
-enum AlchemyWaterfallStages {
-    Drip,
-    Stream,
-    Brook,
-    River,
-    Cascade,
-    Waterfall,
-    Ocean,
-    Sea,
-    Tsunami,
-    Complete,
-}
 enum ForgeAlloys {
     Bronze,
     Iron,
@@ -195,21 +152,20 @@ struct Clicker {
     fireQuest: FirstQuest,
     upgradePrices: UpgradePrices,
     BuildingProgress: BuildingStuffProgress,
-    Potions: AlchemyPotions,
     FireStages: ForgeFireStages,
-    WaterfallStages: AlchemyWaterfallStages,
     current_tab: MenuTab,
     gatherQuest: SecondQuest,
     forgeQuest: ForgeQuest,
-    alchemyQuest: AlchemyQuest,
-    shopQuest: ThirdQuest,
-    enchantingQuest: EnchantingQuest,
     equipmentQuest: EquipmentQuest,
     runeConversionAmount: u32,
     advRuneConversionAmount: u32,
     autoClickInterval: f32,
     autoClickTimer: f32,
     playTime: f32,
+    // Thauminomicon state
+    skills: Vec<SkillNode>,
+    cam_offset: egui::Vec2,
+    cam_zoom: f32,
 }
 
 #[derive(Deserialize, Debug)]
@@ -282,6 +238,16 @@ struct UpgradePrices {
 struct ForgableItemCosts {
     swords: HashMap<String, HashMap<String, u32>>,
     rings: HashMap<String, HashMap<String, u32>>,
+}
+
+#[derive(Clone)]
+struct SkillNode {
+    id: &'static str,
+    name: &'static str,
+    description: &'static str,
+    position: egui::Pos2,
+    unlocked: bool,
+    prerequisites: Vec<&'static str>,
 }
 
 impl Default for Clicker {
@@ -361,15 +327,55 @@ impl Default for Clicker {
             },
             current_tab: MenuTab::Gathering,
             BuildingProgress: BuildingStuffProgress::ForgeFoundation,
-            Potions: AlchemyPotions::Health,
             FireStages: ForgeFireStages::Kindling,
-            WaterfallStages: AlchemyWaterfallStages::Drip,
             gatherQuest: SecondQuest::CollectWaterRunes,
             forgeQuest: ForgeQuest::BuildForge,
-            alchemyQuest: AlchemyQuest::BuildAlchemyLab,
-            shopQuest: ThirdQuest::BuildShop,
-            enchantingQuest: EnchantingQuest::InfuseBasicItems,
             equipmentQuest: EquipmentQuest::EquipBasicGear,
+            // Thauminomicon default
+            skills: vec![
+                SkillNode {
+                    id: "basic_runes",
+                    name: "Basic Runes",
+                    description: "Foundational runes and minor inscriptions.",
+                    position: egui::pos2(300.0, 300.0),
+                    unlocked: true,
+                    prerequisites: vec![],
+                },
+                SkillNode {
+                    id: "essence_control",
+                    name: "Essence Control",
+                    description: "Harness and shape raw vis.",
+                    position: egui::pos2(600.0, 360.0),
+                    unlocked: false,
+                    prerequisites: vec!["basic_runes"],
+                },
+                SkillNode {
+                    id: "advanced_runes",
+                    name: "Advanced Runes",
+                    description: "Complex runic patterns and bindings.",
+                    position: egui::pos2(900.0, 300.0),
+                    unlocked: false,
+                    prerequisites: vec!["essence_control"],
+                },
+                SkillNode {
+                    id: "forging",
+                    name: "Forging",
+                    description: "Imbue metals with magic.",
+                    position: egui::pos2(900.0, 480.0),
+                    unlocked: false,
+                    prerequisites: vec!["essence_control"],
+                },
+                SkillNode {
+                    id: "alchemy_basics",
+                    name: "Alchemy Basics",
+                    description: "Distill and combine essences.",
+                    position: egui::pos2(1200.0, 300.0),
+                    unlocked: false,
+                    prerequisites: vec!["advanced_runes"],
+                },
+            ],
+            cam_offset: egui::vec2(0.0, 0.0),
+            cam_zoom: 1.0,
         }
     }
 }
@@ -379,6 +385,162 @@ impl Clicker {
         let mut clicker_default = Clicker::default();
         clicker_default.crystals = save.inventory.crystals;
         clicker_default
+    }
+
+    fn can_unlock(&self, id: &str) -> bool {
+        if let Some(node) = self.skills.iter().find(|n| n.id == id) {
+            if node.unlocked {
+                return false; // already unlocked
+            }
+            for pre in &node.prerequisites {
+                if let Some(req) = self.skills.iter().find(|n| &n.id == pre) {
+                    if !req.unlocked {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    fn unlock_skill(&mut self, id: &str) {
+        if self.can_unlock(id) {
+            if let Some(n) = self.skills.iter_mut().find(|n| n.id == id) {
+                n.unlocked = true;
+            }
+        }
+    }
+
+    fn show_thauminomicon(&mut self, ui: &mut egui::Ui) {
+        ui.heading(egui::RichText::new("Thauminomicon").color(egui::Color32::WHITE));
+        ui.separator();
+
+        egui::ScrollArea::both()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                let canvas_size = egui::vec2(3000.0, 3000.0);
+                let (rect, response) = ui.allocate_exact_size(canvas_size, egui::Sense::drag());
+                let painter = ui.painter_at(rect);
+
+                // Input handling: zoom with Ctrl+Wheel, pan with middle-mouse drag
+                let scroll_delta = ui.input(|i| i.smooth_scroll_delta.y);
+                let ctrl = ui.input(|i| i.modifiers.ctrl);
+                if ctrl && scroll_delta.abs() > 0.0 {
+                    let zoom_factor = (1.0 + (scroll_delta * 0.001)).clamp(0.5, 1.5);
+                    self.cam_zoom = (self.cam_zoom * zoom_factor).clamp(0.25, 3.0);
+                }
+                let pointer_delta = ui.input(|i| i.pointer.delta());
+                let middle_down = ui.input(|i| i.pointer.middle_down());
+                if middle_down {
+                    self.cam_offset += pointer_delta;
+                }
+
+                // Helpers
+                let to_screen = |p: egui::Pos2| -> egui::Pos2 {
+                    egui::pos2(
+                        rect.min.x + self.cam_offset.x + p.x * self.cam_zoom,
+                        rect.min.y + self.cam_offset.y + p.y * self.cam_zoom,
+                    )
+                };
+                let node_size = egui::vec2(180.0, 64.0) * self.cam_zoom;
+
+                // Draw edges first
+                for node in &self.skills {
+                    for pre in &node.prerequisites {
+                        if let Some(req) = self.skills.iter().find(|n| &n.id == pre) {
+                            let a = to_screen(req.position);
+                            let b = to_screen(node.position);
+                            let col = if req.unlocked { egui::Color32::from_rgb(80, 200, 120) } else { egui::Color32::GRAY };
+                            painter.line_segment([a, b], egui::Stroke { width: 2.0, color: col });
+                        }
+                    }
+                }
+
+                // Draw nodes
+                let mut clicked_id: Option<String> = None;
+                if let Some(pointer_pos) = response.hover_pos() {
+                    for node in &self.skills {
+                        let center = to_screen(node.position);
+                        let rect_node = egui::Rect::from_center_size(center, node_size);
+                        let can_unlock = self.can_unlock(node.id);
+                        let color = if node.unlocked {
+                            egui::Color32::from_rgb(50, 190, 90)
+                        } else if can_unlock {
+                            egui::Color32::from_rgb(60, 140, 220)
+                        } else {
+                            egui::Color32::from_gray(50)
+                        };
+
+                        painter.rect_filled(rect_node, egui::Rounding::same(10), color);
+                        painter.rect_stroke(
+                            rect_node,
+                            egui::Rounding::same(10),
+                            egui::Stroke { width: 2.0, color: egui::Color32::BLACK },
+                            egui::StrokeKind::Outside,
+                        );
+                        painter.text(
+                            rect_node.center(),
+                            egui::Align2::CENTER_CENTER,
+                            node.name,
+                            egui::FontId::proportional(16.0 * self.cam_zoom),
+                            egui::Color32::WHITE,
+                        );
+
+                        if rect_node.contains(pointer_pos) {
+                            egui::containers::show_tooltip_for(
+                                ui.ctx(),
+                                ui.layer_id(),
+                                egui::Id::new(format!("node_tt_{}", node.id)),
+                                &rect_node,
+                                |ui: &mut egui::Ui| {
+                                    ui.label(node.description);
+                                },
+                            );
+
+                            if ui.input(|i| i.pointer.primary_clicked()) {
+                                clicked_id = Some(node.id.to_string());
+                            }
+                        }
+
+                    }
+                } else {
+                    // still draw nodes even when not hovered
+                    for node in &self.skills {
+                        let center = to_screen(node.position);
+                        let rect_node = egui::Rect::from_center_size(center, node_size);
+                        let can_unlock = self.can_unlock(node.id);
+                        let color = if node.unlocked {
+                            egui::Color32::from_rgb(50, 190, 90)
+                        } else if can_unlock {
+                            egui::Color32::from_rgb(60, 140, 220)
+                        } else {
+                            egui::Color32::from_gray(50)
+                        };
+                        painter.rect_filled(rect_node, egui::Rounding::same(10), color);
+                        painter.rect_stroke(
+                            rect_node,
+                            egui::Rounding::same(10),
+                            egui::Stroke { width: 2.0, color: egui::Color32::BLACK },
+                            egui::StrokeKind::Outside,
+                        );
+                        painter.text(
+                            rect_node.center(),
+                            egui::Align2::CENTER_CENTER,
+                            node.name,
+                            egui::FontId::proportional(16.0 * self.cam_zoom),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                }
+
+                if let Some(id) = clicked_id {
+                    self.unlock_skill(&id);
+                }
+            });
     }
 }
 
@@ -404,7 +566,7 @@ fn styled_tab(label: &str) -> egui::Button {
 
 impl Clicker {
     fn show_gathering(&mut self, ui: &mut egui::Ui) {
-        ui.heading(egui::RichText::new("Clicking Menu").color(egui::Color32::WHITE));
+        ui.heading(egui::RichText::new("Gather Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Vis: {}/{}", self.vis, self.maxVis)).color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Souls: {}", self.souls)).color(egui::Color32::WHITE));
         // Display runes
@@ -788,8 +950,6 @@ impl Clicker {
                     self.coins -= 1000;
                     self.BuildingProgress = BuildingStuffProgress::AlchemyStand;
                     self.maxVis += 100;
-                    self.unlocks.alchemyBasics = true;
-                    self.WaterfallStages = AlchemyWaterfallStages::Drip;
                 }
             }
             BuildingStuffProgress::AlchemyStand => {
@@ -1032,6 +1192,7 @@ impl eframe::App for Clicker {
             MenuTab::Achievements => egui::Color32::from_rgb(80, 40, 40),
             MenuTab::Settings => egui::Color32::from_rgb(50, 30, 70),
             MenuTab::StatBreakDown => egui::Color32::from_rgb(30, 70, 30),
+            MenuTab::Thauminomicon => egui::Color32::from_rgb(20, 20, 30),
         };
         // Top menu tabs
         egui::TopBottomPanel::top("menu_panel")
@@ -1066,6 +1227,9 @@ impl eframe::App for Clicker {
                 if ui.add(styled_tab("Stat Break Down")).clicked() {
                     self.current_tab = MenuTab::StatBreakDown;
                 }
+                if ui.add(styled_tab("Thauminomicon")).clicked() {
+                    self.current_tab = MenuTab::Thauminomicon;
+                }
             });
         });
 
@@ -1098,8 +1262,11 @@ impl eframe::App for Clicker {
                     MenuTab::Achievements => self.show_achievements(ui),
                     MenuTab::Settings => self.show_settings(ui),
                     MenuTab::StatBreakDown => self.show_stat_breakdown(ui),
+                    MenuTab::Thauminomicon => self.show_thauminomicon(ui),
                 }
             });
     }
 }
+
+
 
