@@ -1,7 +1,7 @@
 #![allow(deprecated)]
 #![allow(warnings)]
 use eframe::egui;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use indexmap::IndexMap;
 use rand::Rng;
 use std::fs;
@@ -21,6 +21,7 @@ fn main() -> eframe::Result<()> {
         Savefile::default()
     });
     let recipes: RecipesFile = load_json("data/recipes.json").map_err(anyhow_to_eframe)?;
+    let research: ResearchTree = load_research_data("data/research.json").map_err(anyhow_to_eframe)?;
 
     println!("Player: {} [{}]", save.player.Charactername, save.player.Title);
     println!("Level: {}, XP: {}\n", save.player.Level, save.player.Experience);
@@ -37,7 +38,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Clicker Game",
         options,
-        Box::new(move |_cc| Ok(Box::new(Clicker::from_save_with_recipes(save, recipes)))),
+        Box::new(move |_cc| Ok(Box::new(Clicker::from_save_with_data(save, recipes, research)))),
     )
 }
 
@@ -45,6 +46,10 @@ fn load_json<T: for<'de> Deserialize<'de>>(file_path: &str) -> Result<T> {
     let data = fs::read_to_string(file_path)?;
     let parsed: T = serde_json::from_str(&data)?;
     Ok(parsed)
+}
+
+fn load_research_data(path: &str) -> Result<ResearchTree> {
+    load_json(path)
 }
 
 fn safe_subtract(value: &mut u32, amount: u32) -> bool {
@@ -88,6 +93,10 @@ struct Clicker {
     recipes: RecipesFile,
     // Cached textures for crystal icons
     textures: HashMap<String, egui::TextureHandle>,
+    research: ResearchTree,
+    current_research_tab: String,
+    unlocked_research_tabs: HashSet<String>,
+    unlocked_nodes: HashSet<String>,
 }
 
 #[derive(Deserialize, Debug, Default)]
@@ -165,6 +174,23 @@ struct SkillNode {
     prerequisites: Vec<&'static str>,
 }
 
+// Research data-driven system
+#[derive(Deserialize, Clone)]
+struct ResearchNode {
+    id: String,
+    name: String,
+    description: String,
+    x: f32,
+    y: f32,
+    cost: IndexMap<String, u32>,
+    prerequisites: Vec<String>,
+    unlocks: Option<Vec<String>>,
+    unlocks_nodes: Option<Vec<String>>,
+    unlocks_menu: Option<String>,
+}
+
+type ResearchTree = IndexMap<String, Vec<ResearchNode>>; // category -> nodes
+
 impl Default for Clicker {
     fn default() -> Self {
         let crystals = IndexMap::new();
@@ -194,56 +220,24 @@ impl Default for Clicker {
                 auto_click_interval: 800,
             },
             current_tab: MenuTab::Gathering,
-            // Thauminomicon default
-            skills: vec![
-                SkillNode {
-                    id: "basic_crystals",
-                    name: "Basic Crystals",
-                    description: "Foundational Crystals and minor inscriptions.",
-                    position: egui::pos2(300.0, 300.0),
-                    unlocked: true,
-                    prerequisites: vec![],
-                },
-                SkillNode {
-                    id: "essence_control",
-                    name: "Essence Control",
-                    description: "Harness and shape raw vis.",
-                    position: egui::pos2(600.0, 360.0),
-                    unlocked: false,
-                    prerequisites: vec!["basic_crystals"],
-                },
-                SkillNode {
-                    id: "advanced_crystals",
-                    name: "Advanced Crystals",
-                    description: "Complex runic patterns and bindings.",
-                    position: egui::pos2(900.0, 300.0),
-                    unlocked: false,
-                    prerequisites: vec!["essence_control"],
-                },
-                SkillNode {
-                    id: "forging",
-                    name: "Forging",
-                    description: "Imbue metals with magic.",
-                    position: egui::pos2(900.0, 480.0),
-                    unlocked: false,
-                    prerequisites: vec!["essence_control"],
-                },
-                SkillNode {
-                    id: "alchemy_basics",
-                    name: "Alchemy Basics",
-                    description: "Distill and combine essences.",
-                    position: egui::pos2(1200.0, 300.0),
-                    unlocked: false,
-                    prerequisites: vec!["advanced_crystals"],
-                },
-            ],
+            // Data-driven research now provides nodes; keep legacy skills empty
+            skills: Vec::new(),
             cam_offset: egui::vec2(0.0, 0.0),
             cam_zoom: 1.0,
             recipes: RecipesFile { crystals: IndexMap::new() },
             textures: HashMap::new(),
+            research: IndexMap::new(),
+            current_research_tab: "Crystallography".to_string(),
+            unlocked_research_tabs: {
+                let mut s = HashSet::new();
+                s.insert("Crystallography".to_string());
+                s
+            },
+            unlocked_nodes: HashSet::new(),
         }
     }
 }
+
 
 // Unlock result types
 #[derive(Debug)]
@@ -261,12 +255,19 @@ enum UnlockOutcome {
 }
 
 impl Clicker {
-    fn from_save_with_recipes(save: Savefile, recipes: RecipesFile) -> Self {
+    fn from_save_with_data(save: Savefile, recipes: RecipesFile, research: ResearchTree) -> Self {
         let mut clicker_default = Clicker::default();
         clicker_default.crystals = save.inventory.crystals;
         clicker_default.recipes = recipes;
+        clicker_default.research = research;
         // Initialize from saved upgrades
         clicker_default.visClickAmount = save.upgrades.visClickAmount;
+        // Initialize research UI from the loaded data: set first tab if present
+        if let Some((first_tab, _)) = clicker_default.research.iter().next() {
+            clicker_default.current_research_tab = first_tab.clone();
+            clicker_default.unlocked_research_tabs.clear();
+            clicker_default.unlocked_research_tabs.insert(first_tab.clone());
+        }
         clicker_default
     }
 
@@ -297,6 +298,200 @@ impl Clicker {
             }
         }
         None
+    }
+
+    // Research system helpers
+    fn can_unlock_node(&self, id: &str) -> bool {
+        if self.unlocked_nodes.contains(id) {
+            return false;
+        }
+        // find node
+        let node = self
+            .research
+            .values()
+            .flat_map(|v| v.iter())
+            .find(|n| n.id == id);
+        let Some(node) = node else { return false; };
+        node.prerequisites.iter().all(|pre| self.unlocked_nodes.contains(pre))
+    }
+
+    fn can_afford_cost(&self, cost: &IndexMap<String, u32>) -> bool {
+        for (k, &amt) in cost.iter() {
+            match k.as_str() {
+                "Vis" => { if self.vis < amt { return false; } }
+                "Soul" | "Souls" => { if self.souls < amt { return false; } }
+                _ => {
+                    if self.crystals.get(k).copied().unwrap_or(0) < amt { return false; }
+                }
+            }
+        }
+        true
+    }
+
+    fn spend_cost(&mut self, cost: &IndexMap<String, u32>) {
+        for (k, &amt) in cost.iter() {
+            match k.as_str() {
+                "Vis" => { self.vis = self.vis.saturating_sub(amt); }
+                "Soul" | "Souls" => { self.souls = self.souls.saturating_sub(amt); }
+                _ => {
+                    if let Some(v) = self.crystals.get_mut(k) { *v = v.saturating_sub(amt); }
+                }
+            }
+        }
+    }
+
+    fn apply_unlocks(&mut self, unlocks: &[String]) {
+        for u in unlocks {
+            match u.as_str() {
+                "secondary_crystals" => self.unlocks.secondary_crystals = true,
+                "tertiary_crystals" => self.unlocks.tertiary_crystals = true,
+                "quaternary_crystals" => self.unlocks.quaternary_crystals = true,
+                "vis_conversion" => self.unlocks.visConversion = true,
+                "auto_clicking" => self.unlocks.autoCliking = true,
+                "advancedRunes" => self.unlocks.advancedRunes = true,
+                _ => {}
+            }
+        }
+    }
+
+    fn unlock_node(&mut self, id: &str) -> Result<UnlockOutcome, UnlockError> {
+        if self.unlocked_nodes.contains(id) {
+            return Err(UnlockError::AlreadyUnlocked);
+        }
+        // Locate node (and its category) for reading data
+        let (cat_key, idx) = {
+            let mut found: Option<(String, usize)> = None;
+            for (cat, nodes) in &self.research {
+                if let Some(i) = nodes.iter().position(|n| n.id == id) {
+                    found = Some((cat.clone(), i));
+                    break;
+                }
+            }
+            found.ok_or(UnlockError::NotFound)?
+        };
+        let node = &self.research.get(&cat_key).unwrap()[idx];
+        // Clone dynamic fields to avoid holding an immutable borrow across mutation
+        let cost = node.cost.clone();
+        let unlocks = node.unlocks.clone();
+        let unlocks_menu = node.unlocks_menu.clone();
+
+        // Prerequisites
+        let missing: Vec<String> = node
+            .prerequisites
+            .iter()
+            .filter(|pre| !self.unlocked_nodes.contains(pre.as_str()))
+            .cloned()
+            .collect();
+        if !missing.is_empty() { return Err(UnlockError::PrerequisitesMissing(missing)); }
+
+        // Cost
+        if !self.can_afford_cost(&cost) {
+            // derive needed vis/souls is complex; return generic insufficient vis with current vis for simplicity
+            return Err(UnlockError::InsufficientVis { needed: 0, have: self.vis });
+        }
+        self.spend_cost(&cost);
+
+        // Mark unlocked and reward
+        self.unlocked_nodes.insert(id.to_string());
+        self.souls = self.souls.saturating_add(1);
+
+        // Apply unlocks
+        if let Some(unlocks) = &unlocks { self.apply_unlocks(&unlocks); }
+        if let Some(tab) = &unlocks_menu { self.unlocked_research_tabs.insert(tab.clone()); }
+
+        Ok(UnlockOutcome::Unlocked)
+    }
+
+    fn show_research_book(&mut self, ui: &mut egui::Ui) {
+        ui.heading(egui::RichText::new("Thauminomicon").color(egui::Color32::WHITE));
+        ui.separator();
+
+        // Fallback: if current tab is missing (e.g., mismatched name), pick the first available
+        if !self.research.is_empty() && !self.research.contains_key(&self.current_research_tab) {
+            if let Some((first_tab, _)) = self.research.iter().next() {
+                self.current_research_tab = first_tab.clone();
+                self.unlocked_research_tabs.insert(first_tab.clone());
+            }
+        }
+
+        if self.research.is_empty() {
+            ui.colored_label(egui::Color32::LIGHT_RED, "No research data found. Ensure data/research.json exists and loads correctly.");
+            return;
+        }
+
+        // Tabs for research categories
+        ui.horizontal(|ui| {
+            for tab in self.unlocked_research_tabs.clone().into_iter() {
+                if ui.add(styled_tab(&tab)).clicked() { self.current_research_tab = tab; }
+            }
+        });
+
+        egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
+            let canvas_size = egui::vec2(3000.0, 3000.0);
+            let (rect, _response) = ui.allocate_exact_size(canvas_size, egui::Sense::drag());
+            let painter = ui.painter_at(rect);
+
+            // Zoom + pan controls
+            let scroll_delta = ui.input(|i| i.smooth_scroll_delta.y);
+            let ctrl = ui.input(|i| i.modifiers.ctrl);
+            if ctrl && scroll_delta.abs() > 0.0 {
+                let zoom_factor = (1.0 + (scroll_delta * 0.001)).clamp(0.5, 1.5);
+                self.cam_zoom = (self.cam_zoom * zoom_factor).clamp(0.25, 3.0);
+            }
+            let pointer_delta = ui.input(|i| i.pointer.delta());
+            let middle_down = ui.input(|i| i.pointer.middle_down());
+            if middle_down { self.cam_offset += pointer_delta; }
+
+            let to_screen = |p: egui::Pos2| -> egui::Pos2 {
+                egui::pos2(
+                    rect.min.x + self.cam_offset.x + p.x * self.cam_zoom,
+                    rect.min.y + self.cam_offset.y + p.y * self.cam_zoom,
+                )
+            };
+            let node_size = egui::vec2(180.0, 64.0) * self.cam_zoom;
+
+            let nodes = match self.research.get(&self.current_research_tab) { Some(v) => v, None => return };
+
+            // Show all nodes in the current tab; color/animation indicates state.
+
+            // Draw edges
+            for n in nodes.iter() {
+                for pre in &n.prerequisites {
+                    if let Some(pnode) = nodes.iter().find(|pn| &pn.id == pre) {
+                        let a = to_screen(egui::pos2(pnode.x, pnode.y));
+                        let b = to_screen(egui::pos2(n.x, n.y));
+                        painter.line_segment([a, b], egui::Stroke { width: 2.0, color: egui::Color32::DARK_GRAY });
+                    }
+                }
+            }
+
+            let pointer_pos = ui.ctx().pointer_latest_pos();
+            let mut clicked: Option<String> = None;
+            for n in nodes.iter() {
+                let mut center = to_screen(egui::pos2(n.x, n.y));
+                let mut size = node_size;
+                let unlocked = self.unlocked_nodes.contains(&n.id);
+                let unlockable = !unlocked && self.can_unlock_node(&n.id) && self.can_afford_cost(&n.cost);
+                if unlockable {
+                    let t = ui.ctx().input(|i| i.time as f32);
+                    let scale = 1.05 + 0.02 * (t * 3.5).sin();
+                    size *= scale;
+                }
+                let rect_node = egui::Rect::from_center_size(center, size);
+                let color = if unlocked { egui::Color32::from_rgb(50,190,90) } else if unlockable { egui::Color32::from_rgb(60,140,220) } else { egui::Color32::from_gray(50) };
+                painter.rect_filled(rect_node, egui::Rounding::same(10), color);
+                painter.rect_stroke(rect_node, egui::Rounding::same(10), egui::Stroke{width:2.0, color: egui::Color32::BLACK}, egui::StrokeKind::Outside);
+                painter.text(rect_node.center(), egui::Align2::CENTER_CENTER, &n.name, egui::FontId::proportional(14.0*self.cam_zoom), egui::Color32::WHITE);
+                if let Some(pp) = pointer_pos { if rect_node.contains(pp) {
+                    egui::containers::show_tooltip_for(ui.ctx(), ui.layer_id(), egui::Id::new(format!("node_tt_{}", n.id)), &rect_node, |ui: &mut egui::Ui| {
+                        ui.label(&n.description);
+                        if !n.cost.is_empty() { ui.label(format!("Cost: {:?}", n.cost)); }
+                    });
+                    if unlockable && ui.input(|i| i.pointer.primary_clicked()) { clicked = Some(n.id.clone()); }
+                }}
+            }
+            if let Some(id) = clicked { let _ = self.unlock_node(&id); }
+        });
     }
 
     fn can_unlock(&self, id: &str) -> bool {
@@ -709,7 +904,7 @@ impl eframe::App for Clicker {
                 match self.current_tab {
                     MenuTab::Gathering => self.show_gathering(ui),
                     MenuTab::Upgrades => self.show_upgrades(ui),
-                    MenuTab::Thauminomicon => self.show_thauminomicon(ui),
+                    MenuTab::Thauminomicon => self.show_research_book(ui),
                     MenuTab::Equipment => self.show_equipment(ui),
                     MenuTab::Achievements => self.show_achievements(ui),
                     MenuTab::Settings => self.show_settings(ui),
@@ -718,8 +913,4 @@ impl eframe::App for Clicker {
             });
     }
 }
-
-
-
-
 

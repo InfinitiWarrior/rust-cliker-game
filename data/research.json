@@ -1,0 +1,118 @@
+{
+  "Crystallography": [
+    {
+      "id": "basic_crystals",
+      "name": "Basic Crystals",
+      "description": "The foundation of primal crystal study. Unlocks the knowledge to harvest base crystals.",
+      "x": 200,
+      "y": 300,
+      "cost": { "Vis": 0 },
+      "prerequisites": [],
+      "unlocks": ["secondary_crystals"],
+      "unlocks_nodes": ["essence_control"],
+      "unlocks_menu": null
+    },
+    {
+      "id": "essence_control",
+      "name": "Essence Control",
+      "description": "Master manipulation of raw vis. Unlocks control of crystal shaping and vis flow.",
+      "x": 550,
+      "y": 320,
+      "cost": { "Vis": 50 },
+      "prerequisites": ["basic_crystals"],
+      "unlocks": ["tertiary_crystals"],
+      "unlocks_nodes": ["harmonic_resonance"],
+      "unlocks_menu": null
+    },
+    {
+      "id": "harmonic_resonance",
+      "name": "Harmonic Resonance",
+      "description": "Crystals begin to sing to each other. Resonance links form across disciplines.",
+      "x": 900,
+      "y": 340,
+      "cost": { "Vis": 150, "Soul": 1 },
+      "prerequisites": ["essence_control"],
+      "unlocks": ["quaternary_crystals"],
+      "unlocks_nodes": ["crystal_energy_flow", "essence_condensation"],
+      "unlocks_menu": null
+    },
+    {
+      "id": "crystal_energy_flow",
+      "name": "Crystal Energy Flow",
+      "description": "Study the continuous flow of vis through crystal lattices.",
+      "x": 1200,
+      "y": 300,
+      "cost": { "Vis": 300 },
+      "prerequisites": ["harmonic_resonance"],
+      "unlocks": [],
+      "unlocks_nodes": [],
+      "unlocks_menu": "Automation"
+    }
+  ],
+
+  "Alchemy": [
+    {
+      "id": "essence_condensation",
+      "name": "Essence Condensation",
+      "description": "Condense raw vis into alchemical essences. Unlocks the Alchemy tab.",
+      "x": 300,
+      "y": 300,
+      "cost": { "Vis": 100 },
+      "prerequisites": ["harmonic_resonance"],
+      "unlocks": [],
+      "unlocks_nodes": ["vis_generator_concepts"],
+      "unlocks_menu": "Alchemy"
+    },
+    {
+      "id": "vis_generator_concepts",
+      "name": "Vis Generator Concepts",
+      "description": "Early theories on continuous vis generation. Requires understanding of crystal flow.",
+      "x": 600,
+      "y": 300,
+      "cost": { "Vis": 200, "aer": 3 },
+      "prerequisites": ["essence_condensation", "crystal_energy_flow"],
+      "unlocks": [],
+      "unlocks_nodes": ["auto_vis_generator"],
+      "unlocks_menu": "Automation"
+    }
+  ],
+
+  "Automation": [
+    {
+      "id": "auto_vis_generator",
+      "name": "Auto Vis Generator",
+      "description": "Construct devices that convert condensed essence into vis automatically.",
+      "x": 300,
+      "y": 300,
+      "cost": { "Vis": 400, "Soul": 3 },
+      "prerequisites": ["vis_generator_concepts"],
+      "unlocks": ["auto_clicking"],
+      "unlocks_nodes": ["adaptive_crystal_harvester"],
+      "unlocks_menu": null
+    },
+    {
+      "id": "adaptive_crystal_harvester",
+      "name": "Adaptive Crystal Harvester",
+      "description": "Automate crystal collection using harmonic feedback systems.",
+      "x": 650,
+      "y": 320,
+      "cost": { "Vis": 800, "Soul": 5 },
+      "prerequisites": ["auto_vis_generator"],
+      "unlocks": ["vis_conversion"],
+      "unlocks_nodes": ["quantum_resonator"],
+      "unlocks_menu": null
+    },
+    {
+      "id": "quantum_resonator",
+      "name": "Quantum Resonator",
+      "description": "A theoretical construct that amplifies all vis-based systems.",
+      "x": 1000,
+      "y": 340,
+      "cost": { "Vis": 2000, "Soul": 10 },
+      "prerequisites": ["adaptive_crystal_harvester"],
+      "unlocks": ["advancedRunes"],
+      "unlocks_nodes": [],
+      "unlocks_menu": null
+    }
+  ]
+}
