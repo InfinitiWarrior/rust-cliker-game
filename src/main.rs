@@ -16,7 +16,10 @@ fn anyhow_to_eframe(e: anyhow::Error) -> eframe::Error {
 }
 
 fn main() -> eframe::Result<()> {
-    let save: Savefile = load_json("saves/save1.json").map_err(anyhow_to_eframe)?;
+    let save: Savefile = load_json("saves/save1.json").unwrap_or_else(|_| {
+        println!("⚠️ Save file missing, starting new game!");
+        Savefile::default()
+    });
     let recipes: RecipesFile = load_json("data/recipes.json").map_err(anyhow_to_eframe)?;
 
     println!("Player: {} [{}]", save.player.Charactername, save.player.Title);
@@ -24,8 +27,10 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1920.0, 1080.0])
-            .with_position([0.0, 0.0]),
+            // Start maximized so it adapts to any screen size dynamically
+            .with_maximized(true)
+            // Keep a sensible minimum so small screens are usable
+            .with_min_inner_size([800.0, 600.0]),
         ..Default::default()
     };
 
@@ -85,7 +90,7 @@ struct Clicker {
     textures: HashMap<String, egui::TextureHandle>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct Savefile {
     player: Player,
     inventory: Inventory,
@@ -94,7 +99,7 @@ struct Savefile {
     progress: Progress,
     upgrades: Upgrades,
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct Player {
     Charactername: String,
     Title: String,
@@ -102,18 +107,18 @@ struct Player {
     Experience: u32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct Inventory {
     Vis: u32,
     crystals: IndexMap<String, u32>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct Settings {
     colorScheme: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct Unlocks {
     advancedRunes: bool,
     secondary_crystals: bool,
@@ -123,13 +128,13 @@ struct Unlocks {
     autoCliking: bool,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct Progress {
     totalClicks: u32,
     totalVisEarned: u32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct Upgrades {
     #[serde(alias = "clickPower")]
     visClickAmount: u32,
@@ -240,6 +245,21 @@ impl Default for Clicker {
     }
 }
 
+// Unlock result types
+#[derive(Debug)]
+enum UnlockError {
+    NotFound,
+    AlreadyUnlocked,
+    PrerequisitesMissing(Vec<String>),
+    InsufficientVis { needed: u32, have: u32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnlockOutcome {
+    Unlocked,
+    AlreadyUnlocked,
+}
+
 impl Clicker {
     fn from_save_with_recipes(save: Savefile, recipes: RecipesFile) -> Self {
         let mut clicker_default = Clicker::default();
@@ -280,51 +300,61 @@ impl Clicker {
     }
 
     fn can_unlock(&self, id: &str) -> bool {
-        if let Some(node) = self.skills.iter().find(|n| n.id == id) {
-            if node.unlocked {
-                return false; // already unlocked
-            }
-            for pre in &node.prerequisites {
-                if let Some(req) = self.skills.iter().find(|n| &n.id == pre) {
-                    if !req.unlocked {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-            }
-            true
-        } else {
-            false
+        let node = match self.skills.iter().find(|n| n.id == id) {
+            Some(n) => n,
+            None => return false,
+        };
+        if node.unlocked {
+            return false;
         }
+        // All prerequisites must be unlocked
+        node.prerequisites.iter().all(|pre_id| {
+            self.skills.iter().any(|n| n.id == *pre_id && n.unlocked)
+        })
     }
 
-    fn unlock_skill(&mut self, id: &str) {
-        if !self.can_unlock(id) {
-            return;
+    fn unlock_skill(&mut self, id: &str) -> Result<UnlockOutcome, UnlockError> {
+        // Locate node index for atomic mutation
+        let idx = self
+            .skills
+            .iter()
+            .position(|n| n.id == id)
+            .ok_or(UnlockError::NotFound)?;
+
+        if self.skills[idx].unlocked {
+            return Err(UnlockError::AlreadyUnlocked);
         }
 
+        // Verify prerequisites; collect any missing for better diagnostics
+        let missing: Vec<String> = self.skills[idx]
+            .prerequisites
+            .iter()
+            .filter(|pre_id| !self.skills.iter().any(|n| n.id == **pre_id && n.unlocked))
+            .map(|s| s.to_string())
+            .collect();
+        if !missing.is_empty() {
+            return Err(UnlockError::PrerequisitesMissing(missing));
+        }
+
+        // Handle costs atomically before mutating state
         match id {
-            // Essence Control costs 50 vis to unlock
             "essence_control" => {
-                if self.vis >= 50 {
-                    self.vis -= 50;
-                    if let Some(n) = self.skills.iter_mut().find(|n| n.id == id) {
-                        n.unlocked = true;
-                        self.souls = self.souls.saturating_add(1);
-                    }
-                    // Unlock secondary crystal crafting
-                    self.unlocks.secondary_crystals = true;
+                let needed = 50;
+                if self.vis < needed {
+                    return Err(UnlockError::InsufficientVis { needed, have: self.vis });
                 }
+                self.vis -= needed;
+                self.skills[idx].unlocked = true;
+                self.souls = self.souls.saturating_add(1);
+                self.unlocks.secondary_crystals = true;
             }
-            // Other nodes are free for now
             _ => {
-                if let Some(n) = self.skills.iter_mut().find(|n| n.id == id) {
-                    n.unlocked = true;
-                    self.souls = self.souls.saturating_add(1);
-                }
+                self.skills[idx].unlocked = true;
+                self.souls = self.souls.saturating_add(1);
             }
         }
+
+        Ok(UnlockOutcome::Unlocked)
     }
 
     fn show_thauminomicon(&mut self, ui: &mut egui::Ui) {
@@ -527,22 +557,22 @@ impl Clicker {
         ui.heading(egui::RichText::new("Upgrades Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new("Purchase upgrades to enhance clicks or crafting.").color(egui::Color32::WHITE));
 
-        // Upgrade 1: Soul to vis Conversion
+        // Upgrade 1: Vis Click Amount
         if ui.add_enabled(self.souls >= 1, styled_button("Upgrade Vis Click Amount (1 soul)")).clicked() {
             if safe_subtract(&mut self.souls, 1) {
                 self.visClickAmount += 1;
             }
         }
 
-        // Upgrade 2: vis Capacity
+        // Upgrade 2: Vis Capacity
         if ui.add_enabled(self.vis >= 50, styled_button("Upgrade Vis Capacity (+50) (50 Vis)")).clicked() {
             if safe_subtract(&mut self.vis, 50) {
                 self.maxVis += 50;
             }
         }
 
-        // Upgrade 3: Vis Click Amount
-        if ui.add_enabled(self.vis >= 200, styled_button("Upgrade Vis Click Amount (+1) (200 Vis)")).clicked() {
+        // Upgrade 3: Crystal Click Amount
+        if ui.add_enabled(self.vis >= 200, styled_button("Upgrade Crystal Click Amount (+1) (200 Vis)")).clicked() {
             if safe_subtract(&mut self.vis, 200) {
                 self.crystalClickAmount += 1;
             }
