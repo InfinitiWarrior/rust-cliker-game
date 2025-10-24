@@ -68,14 +68,13 @@ enum MenuTab {
     Equipment,
     Achievements,
     Settings,
-    StatBreakDown,
+    Recipes,
 }
 
 struct Clicker {
     unlocks: Unlocks,
     vis: u32,
     maxVis: u32,
-    souls: u32,
     crystals: IndexMap<String, u32>,
     visClickAmount: u32,
     crystalClickAmount: u32,
@@ -97,6 +96,8 @@ struct Clicker {
     current_research_tab: String,
     unlocked_research_tabs: HashSet<String>,
     unlocked_nodes: HashSet<String>,
+    // Recipes unlocked via research: item ids like "gelum", "metallum"
+    unlocked_recipes: HashSet<String>,
 }
 
 #[derive(Deserialize, Debug, Default)]
@@ -197,7 +198,6 @@ impl Default for Clicker {
         Self {
             vis: 0,
             maxVis: 50,
-            souls: 0,
             visClickAmount: 1,
             crystalClickAmount: 1,
             runeChance: 50,
@@ -234,6 +234,7 @@ impl Default for Clicker {
                 s
             },
             unlocked_nodes: HashSet::new(),
+            unlocked_recipes: HashSet::new(),
         }
     }
 }
@@ -319,7 +320,8 @@ impl Clicker {
         for (k, &amt) in cost.iter() {
             match k.as_str() {
                 "Vis" => { if self.vis < amt { return false; } }
-                "Soul" | "Souls" => { if self.souls < amt { return false; } }
+                // Souls removed from the game; ignore any legacy Soul cost keys
+                "Soul" | "Souls" => { /* ignore */ }
                 _ => {
                     if self.crystals.get(k).copied().unwrap_or(0) < amt { return false; }
                 }
@@ -332,7 +334,8 @@ impl Clicker {
         for (k, &amt) in cost.iter() {
             match k.as_str() {
                 "Vis" => { self.vis = self.vis.saturating_sub(amt); }
-                "Soul" | "Souls" => { self.souls = self.souls.saturating_sub(amt); }
+                // Souls removed from the game; ignore any legacy Soul cost keys
+                "Soul" | "Souls" => { /* ignore */ }
                 _ => {
                     if let Some(v) = self.crystals.get_mut(k) { *v = v.saturating_sub(amt); }
                 }
@@ -349,7 +352,11 @@ impl Clicker {
                 "vis_conversion" => self.unlocks.visConversion = true,
                 "auto_clicking" => self.unlocks.autoCliking = true,
                 "advancedRunes" => self.unlocks.advancedRunes = true,
-                _ => {}
+                _ => {
+                    if let Some(rest) = u.strip_prefix("recipe:") {
+                        self.unlocked_recipes.insert(rest.to_string());
+                    }
+                }
             }
         }
     }
@@ -393,7 +400,6 @@ impl Clicker {
 
         // Mark unlocked and reward
         self.unlocked_nodes.insert(id.to_string());
-        self.souls = self.souls.saturating_add(1);
 
         // Apply unlocks
         if let Some(unlocks) = &unlocks { self.apply_unlocks(&unlocks); }
@@ -494,6 +500,76 @@ impl Clicker {
         });
     }
 
+    fn show_recipes(&mut self, ui: &mut egui::Ui) {
+        ui.heading(egui::RichText::new("Recipes").color(egui::Color32::WHITE));
+        ui.separator();
+        if self.recipes.crystals.is_empty() {
+            ui.colored_label(egui::Color32::LIGHT_RED, "No recipes loaded. Check data/recipes.json");
+            return;
+        }
+        let category_unlocked = |cat: &str, unlocks: &Unlocks| -> bool {
+            match cat {
+                "secondary" => unlocks.secondary_crystals,
+                "tertiary" => unlocks.tertiary_crystals,
+                "quaternary" => unlocks.quaternary_crystals,
+                _ => true,
+            }
+        };
+
+        // Clone the recipes to avoid borrowing self while rendering and loading textures
+        let recipes_snapshot = self.recipes.crystals.clone();
+        for (category, items) in recipes_snapshot {
+            if !category_unlocked(category.as_str(), &self.unlocks) { continue; }
+            ui.label(egui::RichText::new(&category).strong().color(egui::Color32::LIGHT_BLUE));
+            ui.horizontal_wrapped(|ui| {
+                for (name, costs) in items.iter() {
+                    // Card styling
+                    let (rect, _resp) = ui.allocate_exact_size(egui::vec2(220.0, 110.0), egui::Sense::hover());
+                    let painter = ui.painter();
+                    painter.rect_filled(rect, egui::Rounding::same(8), egui::Color32::from_rgb(40,40,50));
+                    painter.rect_stroke(
+                        rect,
+                        egui::Rounding::same(8),
+                        egui::Stroke{width:1.0, color: egui::Color32::DARK_GRAY},
+                        egui::StrokeKind::Outside,
+                    );
+                    // Contents
+                    let mut y = rect.min.y + 8.0;
+                    // Icon + name
+                    if let Some(tex) = self.get_crystal_icon(ui.ctx(), name) {
+                        let img_size = egui::vec2(20.0, 20.0);
+                        let img_rect = egui::Rect::from_min_size(rect.min + egui::vec2(8.0, 8.0), img_size);
+                        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                        painter.image(tex.id(), img_rect, uv, egui::Color32::WHITE);
+                    }
+                    painter.text(rect.min + egui::vec2(36.0, 12.0), egui::Align2::LEFT_CENTER, name, egui::FontId::proportional(16.0), egui::Color32::WHITE);
+                    y += 28.0;
+                    // Costs with icons per required crystal/resource
+                    let mut x = rect.min.x + 8.0;
+                    let icon_size = egui::vec2(16.0, 16.0);
+                    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                    for (req, amt) in costs.iter() {
+                        if req == "Soul" || req == "Souls" { continue; }
+                        // Try an icon for the requirement (crystal). For Vis/Soul a text fallback is used.
+                        if let Some(tex) = self.get_crystal_icon(ui.ctx(), req) {
+                            let img_rect = egui::Rect::from_min_size(egui::pos2(x, y), icon_size);
+                            painter.image(tex.id(), img_rect, uv, egui::Color32::WHITE);
+                            x += icon_size.x + 4.0;
+                            painter.text(egui::pos2(x, y + 2.0), egui::Align2::LEFT_TOP, format!("x{}", amt), egui::FontId::proportional(14.0), egui::Color32::LIGHT_GRAY);
+                            x += 28.0; // space before next requirement
+                        } else {
+                            // No icon: show text "req xamt"
+                            let label = format!("{} x{}", req, amt);
+                            painter.text(egui::pos2(x, y + 2.0), egui::Align2::LEFT_TOP, &label, egui::FontId::proportional(14.0), egui::Color32::LIGHT_GRAY);
+                            x += (label.len() as f32) * 7.5 + 12.0;
+                        }
+                    }
+                }
+            });
+            ui.separator();
+        }
+    }
+
     fn can_unlock(&self, id: &str) -> bool {
         let node = match self.skills.iter().find(|n| n.id == id) {
             Some(n) => n,
@@ -540,12 +616,10 @@ impl Clicker {
                 }
                 self.vis -= needed;
                 self.skills[idx].unlocked = true;
-                self.souls = self.souls.saturating_add(1);
                 self.unlocks.secondary_crystals = true;
             }
             _ => {
                 self.skills[idx].unlocked = true;
-                self.souls = self.souls.saturating_add(1);
             }
         }
 
@@ -694,7 +768,7 @@ impl Clicker {
     fn show_gathering(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Gather Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Vis: {}/{}", self.vis, self.maxVis)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Souls: {}", self.souls)).color(egui::Color32::WHITE));
+        // Souls removed
 
         // Clicking button
         if ui.add(styled_button("Conjure resources")).clicked() {
@@ -752,12 +826,7 @@ impl Clicker {
         ui.heading(egui::RichText::new("Upgrades Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new("Purchase upgrades to enhance clicks or crafting.").color(egui::Color32::WHITE));
 
-        // Upgrade 1: Vis Click Amount
-        if ui.add_enabled(self.souls >= 1, styled_button("Upgrade Vis Click Amount (1 soul)")).clicked() {
-            if safe_subtract(&mut self.souls, 1) {
-                self.visClickAmount += 1;
-            }
-        }
+        // Upgrade 1 removed (used souls)
 
         // Upgrade 2: Vis Capacity
         if ui.add_enabled(self.vis >= 50, styled_button("Upgrade Vis Capacity (+50) (50 Vis)")).clicked() {
@@ -832,7 +901,7 @@ impl eframe::App for Clicker {
             MenuTab::Equipment => egui::Color32::from_rgb(30, 30, 60),
             MenuTab::Achievements => egui::Color32::from_rgb(80, 40, 40),
             MenuTab::Settings => egui::Color32::from_rgb(50, 30, 70),
-            MenuTab::StatBreakDown => egui::Color32::from_rgb(30, 70, 30),
+            MenuTab::Recipes => egui::Color32::from_rgb(30, 70, 30),
         };
         // Top menu tabs
         egui::TopBottomPanel::top("menu_panel")
@@ -861,8 +930,8 @@ impl eframe::App for Clicker {
                 if ui.add(styled_tab("Settings")).clicked() {
                     self.current_tab = MenuTab::Settings;
                 }
-                if ui.add(styled_tab("Stat Break Down")).clicked() {
-                    self.current_tab = MenuTab::StatBreakDown;
+                if ui.add(styled_tab("Recipes")).clicked() {
+                    self.current_tab = MenuTab::Recipes;
                 }
             });
         });
@@ -908,7 +977,7 @@ impl eframe::App for Clicker {
                     MenuTab::Equipment => self.show_equipment(ui),
                     MenuTab::Achievements => self.show_achievements(ui),
                     MenuTab::Settings => self.show_settings(ui),
-                    MenuTab::StatBreakDown => self.show_stat_breakdown(ui),
+                    MenuTab::Recipes => self.show_recipes(ui),
                 }
             });
     }
