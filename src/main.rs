@@ -84,6 +84,10 @@ fn save_game(app: &Clicker) -> anyhow::Result<()> {
     save.unlocks = app.unlocks.clone();
     save.upgrades.visClickAmount = app.visClickAmount;
     save.upgrades.crystalClickAmount = app.crystalClickAmount;
+    // Persist research progress
+    save.unlocked_nodes = app.unlocked_nodes.iter().cloned().collect();
+    save.unlocked_recipes = app.unlocked_recipes.iter().cloned().collect();
+    save.unlocked_research_tabs = app.unlocked_research_tabs.iter().cloned().collect();
     let json = serde_json::to_vec_pretty(&save)?;
     std::fs::write(save_path(), json)?;
     Ok(())
@@ -138,6 +142,7 @@ struct Clicker {
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
+#[serde(default)]
 struct Savefile {
     player: Player,
     inventory: Inventory,
@@ -145,7 +150,13 @@ struct Savefile {
     unlocks: Unlocks,
     progress: Progress,
     upgrades: Upgrades,
+
+    // NEW: what to persist about research/thauminomicon
+    unlocked_nodes: Vec<String>,         // list of node IDs
+    unlocked_recipes: Vec<String>,       // recipe ids unlocked by research
+    unlocked_research_tabs: Vec<String>, // research tabs unlocked
 }
+
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct Player {
     Charactername: String,
@@ -183,7 +194,6 @@ struct Progress {
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct Upgrades {
-    #[serde(alias = "clickPower")]
     visClickAmount: u32,
     crystalClickAmount: u32,
     autoClicker: u32,
@@ -296,16 +306,28 @@ enum UnlockOutcome {
 impl Clicker {
     fn from_save_with_data(save: Savefile, recipes: RecipesFile, research: ResearchTree) -> Self {
         let mut clicker_default = Clicker::default();
+        // Restore inventory state
         clicker_default.crystals = save.inventory.crystals;
+        clicker_default.vis = save.inventory.Vis;
         clicker_default.recipes = recipes;
         clicker_default.research = research;
         // Initialize from saved upgrades
         clicker_default.visClickAmount = save.upgrades.visClickAmount;
-        // Initialize research UI from the loaded data: set first tab if present
-        if let Some((first_tab, _)) = clicker_default.research.iter().next() {
-            clicker_default.current_research_tab = first_tab.clone();
-            clicker_default.unlocked_research_tabs.clear();
-            clicker_default.unlocked_research_tabs.insert(first_tab.clone());
+        // Populate runtime sets from save vectors
+        clicker_default.unlocked_nodes = save.unlocked_nodes.into_iter().collect();
+        clicker_default.unlocked_recipes = save.unlocked_recipes.into_iter().collect();
+        clicker_default.unlocked_research_tabs = save.unlocked_research_tabs.into_iter().collect();
+        // Ensure at least one research tab is unlocked
+        if clicker_default.unlocked_research_tabs.is_empty() {
+            if let Some((first_tab, _)) = clicker_default.research.iter().next() {
+                clicker_default.unlocked_research_tabs.insert(first_tab.clone());
+                clicker_default.current_research_tab = first_tab.clone();
+            }
+        } else if !clicker_default.unlocked_research_tabs.contains(&clicker_default.current_research_tab) {
+            // pick a valid current tab
+            if let Some(tab) = clicker_default.unlocked_research_tabs.iter().next() {
+                clicker_default.current_research_tab = tab.clone();
+            }
         }
         clicker_default
     }
@@ -1088,7 +1110,14 @@ impl Clicker {
     fn show_settings(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Settings Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new("Adjust your game settings here.").color(egui::Color32::WHITE));
-        // Placeholder for settings adjustments
+        ui.separator();
+        if ui.add(styled_button("Save Game")).clicked() {
+            let _ = save_game(self);
+        }
+        if ui.add(styled_button("Save and Exit")).clicked() {
+            let _ = save_game(self);
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
     }
     fn show_stat_breakdown(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Stat Break Down Menu").color(egui::Color32::WHITE));
