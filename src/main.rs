@@ -198,7 +198,7 @@ impl Default for Clicker {
             vis: 0,
             maxVis: 50,
             visClickAmount: 50,
-            crystalClickAmount: 100,
+            crystalClickAmount: 1,
             runeChance: 50,
             crystals,
             autoClickInterval: 30.0,
