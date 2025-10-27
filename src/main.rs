@@ -7,6 +7,12 @@ use rand::Rng;
 use std::fs;
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use rust_embed::RustEmbed;
+
+#[derive(RustEmbed)]
+#[folder = "assets/aspects/"]
+#[include = "**/*.png"]
+struct Aspects;
 
 fn anyhow_to_eframe(e: anyhow::Error) -> eframe::Error {
     eframe::Error::AppCreation(Box::new(std::io::Error::new(
@@ -304,11 +310,30 @@ impl Clicker {
         clicker_default
     }
 
-    fn get_crystal_icon(&mut self, ctx: &egui::Context, name: &str) -> Option<&egui::TextureHandle> {
+        fn get_crystal_icon(&mut self, ctx: &egui::Context, name: &str) -> Option<&egui::TextureHandle> {
         if self.textures.contains_key(name) {
             return self.textures.get(name);
         }
-        // Attempt to load from assets/aspects/<name>.png, with a fallback to common misspelling
+
+        // Try embedded first
+        let path = format!("{}.png", name);
+        if let Some(file) = Aspects::get(&path) {
+            if let Ok(image) = image::load_from_memory(&file.data) {
+                let rgba = image.to_rgba8();
+                let size = [rgba.width() as usize, rgba.height() as usize];
+                let pixels = rgba.as_raw();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels);
+                let tex = ctx.load_texture(
+                    format!("crystal_{}", name),
+                    color_image,
+                    egui::TextureOptions::LINEAR,
+                );
+                self.textures.insert(name.to_string(), tex);
+                return self.textures.get(name);
+            }
+        }
+
+        // Fallback for dev mode
         let try_paths = [
             format!("assets/aspects/{}.png", name),
             format!("assets/apsects/{}.png", name),
@@ -330,6 +355,7 @@ impl Clicker {
                 }
             }
         }
+
         None
     }
 
