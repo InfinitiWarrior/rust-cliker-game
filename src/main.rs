@@ -68,7 +68,6 @@ enum MenuTab {
     Equipment,
     Achievements,
     Settings,
-    Recipes,
 }
 
 struct Clicker {
@@ -198,8 +197,8 @@ impl Default for Clicker {
         Self {
             vis: 0,
             maxVis: 50,
-            visClickAmount: 1,
-            crystalClickAmount: 1,
+            visClickAmount: 50,
+            crystalClickAmount: 100,
             runeChance: 50,
             crystals,
             autoClickInterval: 30.0,
@@ -460,13 +459,42 @@ impl Clicker {
 
             // Show all nodes in the current tab; color/animation indicates state.
 
-            // Draw edges
+            // Draw edge shafts first (under nodes) and collect arrowheads to draw on top
+            let mut arrowheads: Vec<(egui::Pos2, egui::Pos2, egui::Pos2, egui::Stroke)> = Vec::new();
             for n in nodes.iter() {
                 for pre in &n.prerequisites {
                     if let Some(pnode) = nodes.iter().find(|pn| &pn.id == pre) {
                         let a = to_screen(egui::pos2(pnode.x, pnode.y));
-                        let b = to_screen(egui::pos2(n.x, n.y));
-                        painter.line_segment([a, b], egui::Stroke { width: 2.0, color: egui::Color32::DARK_GRAY });
+                        let b_center = to_screen(egui::pos2(n.x, n.y));
+                        let stroke = egui::Stroke { width: 2.0, color: egui::Color32::DARK_GRAY };
+                        let dir = b_center - a;
+                        let len = dir.length();
+                        if len > 1.0 {
+                            let u = dir / len;
+                            let arrow_len = 12.0 * self.cam_zoom.max(0.5);
+                            let arrow_half_w = 6.0 * self.cam_zoom.max(0.5);
+                            // Compute intersection with child node rectangle to place arrow just before it
+                            let hx = (node_size.x * 0.5).max(1.0);
+                            let hy = (node_size.y * 0.5).max(1.0);
+                            let ux = u.x.abs();
+                            let uy = u.y.abs();
+                            let tx = if ux > 1e-6 { hx / ux } else { f32::INFINITY };
+                            let ty = if uy > 1e-6 { hy / uy } else { f32::INFINITY };
+                            let t_edge = tx.min(ty);
+                            // Edge point on the child rect boundary (from center along -u)
+                            let edge_point = b_center - u * t_edge;
+                            let tip_inset = 4.0 * self.cam_zoom.max(0.5);
+                            let tip = edge_point - u * tip_inset;
+                            let base = tip - u * arrow_len;
+                            let perp = egui::vec2(-u.y, u.x);
+                            let left = base + perp * arrow_half_w;
+                            let right = base - perp * arrow_half_w;
+                            // main shaft up to base of arrow (so head sits on top of node)
+                            painter.line_segment([a, base], stroke);
+                            arrowheads.push((tip, left, right, stroke));
+                        } else {
+                            painter.line_segment([a, b_center], stroke);
+                        }
                     }
                 }
             }
@@ -497,6 +525,11 @@ impl Clicker {
                 }}
             }
             if let Some(id) = clicked { let _ = self.unlock_node(&id); }
+            // Draw arrowheads on top of nodes so they are visible
+            for (tip, left, right, stroke) in arrowheads {
+                painter.line_segment([tip, left], stroke);
+                painter.line_segment([tip, right], stroke);
+            }
         });
     }
 
@@ -789,31 +822,164 @@ impl Clicker {
             }
         }
 
-        // Secondary crystals crafting (from recipes.json), unlocked by Essence Control
+        // Secondary crystals crafting (cards)
         if self.unlocks.secondary_crystals {
             ui.separator();
             ui.label(egui::RichText::new("secondary crystals").color(egui::Color32::LIGHT_BLUE));
-            if let Some(categories) = self.recipes.crystals.get("secondary") {
-                // Render buttons left-to-right and wrap when needed
+            if let Some(items) = self.recipes.crystals.get("secondary").cloned() {
+                let gallery: Vec<(String, IndexMap<String, u32>)> = items.into_iter().collect();
                 ui.horizontal_wrapped(|ui| {
-                    for (name, costs) in categories {
-                        // Check if we can afford costs
+                    for (name, costs) in gallery.iter() {
+                        // affordability
                         let mut can_afford = true;
-                        for (req, &amt) in costs {
-                            if self.crystals.get(req).copied().unwrap_or(0) < amt {
-                                can_afford = false;
-                                break;
+                        for (req, amt) in costs.iter() {
+                            if self.crystals.get(req.as_str()).copied().unwrap_or(0) < *amt {
+                                can_afford = false; break;
                             }
                         }
-                        let label = format!("Make {}", name);
-                        if ui.add_enabled(can_afford, styled_button(&label)).clicked() {
-                            // Deduct inputs
-                            for (req, &amt) in costs {
-                                if let Some(entry) = self.crystals.get_mut(req) {
-                                    *entry = entry.saturating_sub(amt);
+                        // Card
+                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(220.0, 110.0), egui::Sense::click());
+                        let painter = ui.painter();
+                        let bg = if can_afford { egui::Color32::from_rgb(40,50,60) } else { egui::Color32::from_rgb(30,30,35) };
+                        painter.rect_filled(rect, egui::Rounding::same(8), bg);
+                        painter.rect_stroke(rect, egui::Rounding::same(8), egui::Stroke{width:1.0, color: egui::Color32::DARK_GRAY}, egui::StrokeKind::Outside);
+                        // icon + name
+                        let mut y = rect.min.y + 8.0;
+                        if let Some(tex) = self.get_crystal_icon(ui.ctx(), name) {
+                            let img_size = egui::vec2(20.0,20.0);
+                            let img_rect = egui::Rect::from_min_size(rect.min + egui::vec2(8.0,8.0), img_size);
+                            let uv = egui::Rect::from_min_max(egui::pos2(0.0,0.0), egui::pos2(1.0,1.0));
+                            painter.image(tex.id(), img_rect, uv, egui::Color32::WHITE);
+                        }
+                        painter.text(rect.min + egui::vec2(36.0, 12.0), egui::Align2::LEFT_CENTER, name, egui::FontId::proportional(16.0), egui::Color32::WHITE);
+                        y += 28.0;
+                        // costs with icons
+                        let mut x = rect.min.x + 8.0;
+                        let icon_size = egui::vec2(16.0,16.0);
+                        let uv = egui::Rect::from_min_max(egui::pos2(0.0,0.0), egui::pos2(1.0,1.0));
+                        for (req, amt) in costs.iter() {
+                            if let Some(tex) = self.get_crystal_icon(ui.ctx(), req) {
+                                let img_rect = egui::Rect::from_min_size(egui::pos2(x,y), icon_size);
+                                painter.image(tex.id(), img_rect, uv, egui::Color32::WHITE);
+                                x += icon_size.x + 4.0;
+                                let t = format!("x{}", amt);
+                                painter.text(egui::pos2(x,y+2.0), egui::Align2::LEFT_TOP, &t, egui::FontId::proportional(14.0), egui::Color32::LIGHT_GRAY);
+                                x += 28.0;
+                            } else {
+                                let label = format!("{} x{}", req, amt);
+                                painter.text(egui::pos2(x, y+2.0), egui::Align2::LEFT_TOP, &label, egui::FontId::proportional(14.0), egui::Color32::LIGHT_GRAY);
+                                x += (label.len() as f32)*7.5 + 12.0;
+                            }
+                        }
+                        if can_afford && resp.clicked() {
+                            // spend and craft
+                            for (req, amt) in costs.iter() {
+                                if let Some(entry) = self.crystals.get_mut(req.as_str()) {
+                                    *entry = entry.saturating_sub(*amt);
                                 }
                             }
-                            // Add output
+                            *self.crystals.entry(name.to_string()).or_insert(0) += 1;
+                        }
+                    }
+                });
+            }
+        }
+
+        // Tertiary crystals crafting (cards)
+        if self.unlocks.tertiary_crystals {
+            ui.separator();
+            ui.label(egui::RichText::new("tertiary crystals").color(egui::Color32::LIGHT_BLUE));
+            if let Some(items) = self.recipes.crystals.get("tertiary").cloned() {
+                let gallery: Vec<(String, IndexMap<String, u32>)> = items.into_iter().collect();
+                ui.horizontal_wrapped(|ui| {
+                    for (name, costs) in gallery.iter() {
+                        let mut can_afford = true;
+                        for (req, amt) in costs.iter() {
+                            if self.crystals.get(req.as_str()).copied().unwrap_or(0) < *amt { can_afford = false; break; }
+                        }
+                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(220.0, 110.0), egui::Sense::click());
+                        let painter = ui.painter();
+                        let bg = if can_afford { egui::Color32::from_rgb(40,50,60) } else { egui::Color32::from_rgb(30,30,35) };
+                        painter.rect_filled(rect, egui::Rounding::same(8), bg);
+                        painter.rect_stroke(rect, egui::Rounding::same(8), egui::Stroke{width:1.0, color: egui::Color32::DARK_GRAY}, egui::StrokeKind::Outside);
+                        let mut y = rect.min.y + 8.0;
+                        if let Some(tex) = self.get_crystal_icon(ui.ctx(), name) {
+                            let img_size = egui::vec2(20.0,20.0);
+                            let img_rect = egui::Rect::from_min_size(rect.min + egui::vec2(8.0,8.0), img_size);
+                            let uv = egui::Rect::from_min_max(egui::pos2(0.0,0.0), egui::pos2(1.0,1.0));
+                            painter.image(tex.id(), img_rect, uv, egui::Color32::WHITE);
+                        }
+                        painter.text(rect.min + egui::vec2(36.0, 12.0), egui::Align2::LEFT_CENTER, name, egui::FontId::proportional(16.0), egui::Color32::WHITE);
+                        y += 28.0;
+                        let mut x = rect.min.x + 8.0;
+                        let icon_size = egui::vec2(16.0,16.0);
+                        let uv = egui::Rect::from_min_max(egui::pos2(0.0,0.0), egui::pos2(1.0,1.0));
+                        for (req, amt) in costs.iter() {
+                            if let Some(tex) = self.get_crystal_icon(ui.ctx(), req) {
+                                let img_rect = egui::Rect::from_min_size(egui::pos2(x,y), icon_size);
+                                painter.image(tex.id(), img_rect, uv, egui::Color32::WHITE);
+                                x += icon_size.x + 4.0;
+                                let t = format!("x{}", amt);
+                                painter.text(egui::pos2(x,y+2.0), egui::Align2::LEFT_TOP, &t, egui::FontId::proportional(14.0), egui::Color32::LIGHT_GRAY);
+                                x += 28.0;
+                            } else {
+                                let label = format!("{} x{}", req, amt);
+                                painter.text(egui::pos2(x, y+2.0), egui::Align2::LEFT_TOP, &label, egui::FontId::proportional(14.0), egui::Color32::LIGHT_GRAY);
+                                x += (label.len() as f32)*7.5 + 12.0;
+                            }
+                        }
+                        if can_afford && resp.clicked() {
+                            for (req, amt) in costs.iter() { if let Some(e) = self.crystals.get_mut(req.as_str()) { *e = e.saturating_sub(*amt); } }
+                            *self.crystals.entry(name.to_string()).or_insert(0) += 1;
+                        }
+                    }
+                });
+            }
+        }
+
+        // Quaternary crystals crafting (cards)
+        if self.unlocks.quaternary_crystals {
+            ui.separator();
+            ui.label(egui::RichText::new("quaternary crystals").color(egui::Color32::LIGHT_BLUE));
+            if let Some(items) = self.recipes.crystals.get("quaternary").cloned() {
+                let gallery: Vec<(String, IndexMap<String, u32>)> = items.into_iter().collect();
+                ui.horizontal_wrapped(|ui| {
+                    for (name, costs) in gallery.iter() {
+                        let mut can_afford = true;
+                        for (req, amt) in costs.iter() { if self.crystals.get(req.as_str()).copied().unwrap_or(0) < *amt { can_afford = false; break; } }
+                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(220.0, 110.0), egui::Sense::click());
+                        let painter = ui.painter();
+                        let bg = if can_afford { egui::Color32::from_rgb(40,50,60) } else { egui::Color32::from_rgb(30,30,35) };
+                        painter.rect_filled(rect, egui::Rounding::same(8), bg);
+                        painter.rect_stroke(rect, egui::Rounding::same(8), egui::Stroke{width:1.0, color: egui::Color32::DARK_GRAY}, egui::StrokeKind::Outside);
+                        let mut y = rect.min.y + 8.0;
+                        if let Some(tex) = self.get_crystal_icon(ui.ctx(), name) {
+                            let img_size = egui::vec2(20.0,20.0);
+                            let img_rect = egui::Rect::from_min_size(rect.min + egui::vec2(8.0,8.0), img_size);
+                            let uv = egui::Rect::from_min_max(egui::pos2(0.0,0.0), egui::pos2(1.0,1.0));
+                            painter.image(tex.id(), img_rect, uv, egui::Color32::WHITE);
+                        }
+                        painter.text(rect.min + egui::vec2(36.0, 12.0), egui::Align2::LEFT_CENTER, name, egui::FontId::proportional(16.0), egui::Color32::WHITE);
+                        y += 28.0;
+                        let mut x = rect.min.x + 8.0;
+                        let icon_size = egui::vec2(16.0,16.0);
+                        let uv = egui::Rect::from_min_max(egui::pos2(0.0,0.0), egui::pos2(1.0,1.0));
+                        for (req, amt) in costs.iter() {
+                            if let Some(tex) = self.get_crystal_icon(ui.ctx(), req) {
+                                let img_rect = egui::Rect::from_min_size(egui::pos2(x,y), icon_size);
+                                painter.image(tex.id(), img_rect, uv, egui::Color32::WHITE);
+                                x += icon_size.x + 4.0;
+                                let t = format!("x{}", amt);
+                                painter.text(egui::pos2(x,y+2.0), egui::Align2::LEFT_TOP, &t, egui::FontId::proportional(14.0), egui::Color32::LIGHT_GRAY);
+                                x += 28.0;
+                            } else {
+                                let label = format!("{} x{}", req, amt);
+                                painter.text(egui::pos2(x, y+2.0), egui::Align2::LEFT_TOP, &label, egui::FontId::proportional(14.0), egui::Color32::LIGHT_GRAY);
+                                x += (label.len() as f32)*7.5 + 12.0;
+                            }
+                        }
+                        if can_afford && resp.clicked() {
+                            for (req, amt) in costs.iter() { if let Some(e) = self.crystals.get_mut(req.as_str()) { *e = e.saturating_sub(*amt); } }
                             *self.crystals.entry(name.to_string()).or_insert(0) += 1;
                         }
                     }
@@ -901,7 +1067,6 @@ impl eframe::App for Clicker {
             MenuTab::Equipment => egui::Color32::from_rgb(30, 30, 60),
             MenuTab::Achievements => egui::Color32::from_rgb(80, 40, 40),
             MenuTab::Settings => egui::Color32::from_rgb(50, 30, 70),
-            MenuTab::Recipes => egui::Color32::from_rgb(30, 70, 30),
         };
         // Top menu tabs
         egui::TopBottomPanel::top("menu_panel")
@@ -929,9 +1094,6 @@ impl eframe::App for Clicker {
                 }
                 if ui.add(styled_tab("Settings")).clicked() {
                     self.current_tab = MenuTab::Settings;
-                }
-                if ui.add(styled_tab("Recipes")).clicked() {
-                    self.current_tab = MenuTab::Recipes;
                 }
             });
         });
@@ -977,9 +1139,9 @@ impl eframe::App for Clicker {
                     MenuTab::Equipment => self.show_equipment(ui),
                     MenuTab::Achievements => self.show_achievements(ui),
                     MenuTab::Settings => self.show_settings(ui),
-                    MenuTab::Recipes => self.show_recipes(ui),
                 }
             });
     }
 }
+
 

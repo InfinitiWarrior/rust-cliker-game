@@ -65,8 +65,8 @@
         "totalVisEarned": 50
     },
     "upgrades":{
-        "visClickAmount": 1,
-        "crystalClickAmount": 1,
+        "visClickAmount": 500,
+        "crystalClickAmount": 100,
         "autoClicker": 0
     }
 
