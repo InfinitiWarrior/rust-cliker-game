@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use indexmap::IndexMap;
 use rand::Rng;
 use std::fs;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use anyhow::Result;
 
 fn anyhow_to_eframe(e: anyhow::Error) -> eframe::Error {
@@ -15,13 +15,15 @@ fn anyhow_to_eframe(e: anyhow::Error) -> eframe::Error {
     )))
 }
 
+// Embedded static data
+const RECIPES_JSON: &str = include_str!("../data/recipes.json");
+const RESEARCH_JSON: &str = include_str!("../data/research.json");
+const DEFAULT_SAVE_JSON: &str = include_str!("../saves/deafault-save.json");
+
 fn main() -> eframe::Result<()> {
-    let save: Savefile = load_json("saves/save1.json").unwrap_or_else(|_| {
-        println!("⚠️ Save file missing, starting new game!");
-        Savefile::default()
-    });
-    let recipes: RecipesFile = load_json("data/recipes.json").map_err(anyhow_to_eframe)?;
-    let research: ResearchTree = load_research_data("data/research.json").map_err(anyhow_to_eframe)?;
+    let save: Savefile = load_or_create_save();
+    let recipes: RecipesFile = serde_json::from_str(RECIPES_JSON).map_err(|e| anyhow_to_eframe(e.into()))?;
+    let research: ResearchTree = serde_json::from_str(RESEARCH_JSON).map_err(|e| anyhow_to_eframe(e.into()))?;
 
     println!("Player: {} [{}]", save.player.Charactername, save.player.Title);
     println!("Level: {}, XP: {}\n", save.player.Level, save.player.Experience);
@@ -48,8 +50,37 @@ fn load_json<T: for<'de> Deserialize<'de>>(file_path: &str) -> Result<T> {
     Ok(parsed)
 }
 
-fn load_research_data(path: &str) -> Result<ResearchTree> {
-    load_json(path)
+fn load_research_data(_path: &str) -> Result<ResearchTree> { serde_json::from_str(RESEARCH_JSON).map_err(Into::into) }
+
+fn save_path() -> std::path::PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
+        .join("save.json")
+}
+
+fn load_or_create_save() -> Savefile {
+    let path = save_path();
+    match std::fs::read_to_string(&path) {
+        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+        Err(_) => {
+            let _ = std::fs::write(&path, DEFAULT_SAVE_JSON.as_bytes());
+            serde_json::from_str(DEFAULT_SAVE_JSON).unwrap_or_default()
+        }
+    }
+}
+
+fn save_game(app: &Clicker) -> anyhow::Result<()> {
+    let mut save = Savefile::default();
+    save.inventory.Vis = app.vis;
+    save.inventory.crystals = app.crystals.clone();
+    save.unlocks = app.unlocks.clone();
+    save.upgrades.visClickAmount = app.visClickAmount;
+    save.upgrades.crystalClickAmount = app.crystalClickAmount;
+    let json = serde_json::to_vec_pretty(&save)?;
+    std::fs::write(save_path(), json)?;
+    Ok(())
 }
 
 fn safe_subtract(value: &mut u32, amount: u32) -> bool {
@@ -83,6 +114,7 @@ struct Clicker {
     autoClickInterval: f32,
     autoClickTimer: f32,
     playTime: f32,
+    autosave_timer: f32,
     // Thauminomicon state
     skills: Vec<SkillNode>,
     cam_offset: egui::Vec2,
@@ -99,7 +131,7 @@ struct Clicker {
     unlocked_recipes: HashSet<String>,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Savefile {
     player: Player,
     inventory: Inventory,
@@ -108,7 +140,7 @@ struct Savefile {
     progress: Progress,
     upgrades: Upgrades,
 }
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Player {
     Charactername: String,
     Title: String,
@@ -116,18 +148,18 @@ struct Player {
     Experience: u32,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Inventory {
     Vis: u32,
     crystals: IndexMap<String, u32>,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Settings {
     colorScheme: String,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 struct Unlocks {
     advancedRunes: bool,
     secondary_crystals: bool,
@@ -137,13 +169,13 @@ struct Unlocks {
     autoCliking: bool,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Progress {
     totalClicks: u32,
     totalVisEarned: u32,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct Upgrades {
     #[serde(alias = "clickPower")]
     visClickAmount: u32,
@@ -204,6 +236,7 @@ impl Default for Clicker {
             autoClickInterval: 30.0,
             autoClickTimer: 0.0,
             playTime: 0.0,
+            autosave_timer: 0.0,
             unlocks: Unlocks {
                 advancedRunes: false,
                 secondary_crystals: false,
@@ -1045,6 +1078,14 @@ impl eframe::App for Clicker {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 
         // inside update(...) where you have access to `ctx`
+        // autosave every 60 seconds
+        let dt = ctx.input(|i| i.unstable_dt);
+        self.autosave_timer += dt;
+        if self.autosave_timer >= 60.0 {
+            let _ = save_game(self);
+            self.autosave_timer = 0.0;
+        }
+
         if self.unlocks.autoCliking {
             // request continuous repaints so update() runs each frame
             ctx.request_repaint();
@@ -1143,5 +1184,11 @@ impl eframe::App for Clicker {
             });
     }
 }
+
+
+
+
+
+
 
 
