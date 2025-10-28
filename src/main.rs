@@ -1109,14 +1109,6 @@ impl Clicker {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
-    fn show_stat_breakdown(&mut self, ui: &mut egui::Ui) {
-        ui.heading(egui::RichText::new("Stat Break Down Menu").color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new("Detailed stats of your progress.").color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Vis Limit {}", self.maxVis)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Vis per Click {}", self.visClickAmount)).color(egui::Color32::WHITE));
-        ui.label(egui::RichText::new(format!("Rune Chance {}", self.runeChance)).color(egui::Color32::WHITE));
-        // Placeholder for detailed stats
-    }
 }
 
 impl eframe::App for Clicker {
