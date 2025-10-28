@@ -20,7 +20,7 @@
       "y": 520,
       "cost": { "Vis": 60, "ordo": 6, "terra": 6 },
       "prerequisites": ["primal_lore"],
-      "unlocks": ["visConversion"],
+      "unlocks": [],
       "unlocks_nodes": ["lattice_geometry", "echo_resonance"],
       "unlocks_menu": null
     },
@@ -128,7 +128,7 @@
       "y": 720,
       "cost": { "Vis": 900, "auram": 16, "vitium": 16, "fabrico": 12 },
       "prerequisites": ["quaternary_theory", "resonant_bonds"],
-      "unlocks": ["advancedRunes"],
+      "unlocks": [],
       "unlocks_nodes": [],
       "unlocks_menu": "Alchemy"
     }
@@ -290,7 +290,7 @@
       "y": 1000,
       "cost": { "Vis": 160, "machina": 6, "motus": 10 },
       "prerequisites": ["clockwork_frame"],
-      "unlocks": ["visConversion"],
+      "unlocks": ["visClickUpgrades"],
       "unlocks_nodes": ["adaptive_harvester"],
       "unlocks_menu": null
     },

@@ -82,6 +82,8 @@ fn save_game(app: &Clicker) -> anyhow::Result<()> {
     save.unlocks = app.unlocks.clone();
     save.upgrades.visClickAmount = app.visClickAmount;
     save.upgrades.crystalClickAmount = app.crystalClickAmount;
+    save.upgrades.visClickAmountTimesBought = app.visClickAmountTimesBought;
+    save.upgrades.crystalClickAmountTimesBought = app.crystalClickAmountTimesBought;
     // Persist research progress
     save.unlocked_nodes = app.unlocked_nodes.iter().cloned().collect();
     save.unlocked_recipes = app.unlocked_recipes.iter().cloned().collect();
@@ -115,7 +117,9 @@ struct Clicker {
     maxVis: u32,
     crystals: IndexMap<String, u32>,
     visClickAmount: u32,
+    visClickAmountTimesBought: u32,
     crystalClickAmount: u32,
+    crystalClickAmountTimesBought: u32,
     runeChance: u32,
     current_tab: MenuTab,
     autoClickInterval: f32,
@@ -145,7 +149,6 @@ struct Savefile {
     inventory: Inventory,
     settings: Settings,
     unlocks: Unlocks,
-    progress: Progress,
     upgrades: Upgrades,
 
     // NEW: what to persist about research/thauminomicon
@@ -175,22 +178,17 @@ struct Settings {
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 struct Unlocks {
-    advancedRunes: bool,
     secondary_crystals: bool,
     tertiary_crystals: bool,
     quaternary_crystals: bool,
-    visConversion: bool,
+    visClickUpgrades: bool,
     autoCliking: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct Progress {
-    totalClicks: u32,
-    totalVisEarned: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Default)]
 struct Upgrades {
+    visClickAmountTimesBought: u32,
+    crystalClickAmountTimesBought: u32,
     visClickAmount: u32,
     crystalClickAmount: u32,
     autoClicker: u32,
@@ -236,7 +234,9 @@ impl Default for Clicker {
             vis: 0,
             maxVis: 50,
             visClickAmount: 1,
+            visClickAmountTimesBought: 0,
             crystalClickAmount: 1,
+            crystalClickAmountTimesBought: 0,
             runeChance: 50,
             crystals,
             autoClickInterval: 30.0,
@@ -244,11 +244,10 @@ impl Default for Clicker {
             playTime: 0.0,
             autosave_timer: 0.0,
             unlocks: Unlocks {
-                advancedRunes: false,
                 secondary_crystals: false,
                 tertiary_crystals: false,
                 quaternary_crystals: false,
-                visConversion: false,
+                visClickUpgrades: false,
                 autoCliking: false,
             },
             current_tab: MenuTab::Gathering,
@@ -295,8 +294,16 @@ impl Clicker {
         clicker_default.vis = save.inventory.Vis;
         clicker_default.recipes = recipes;
         clicker_default.research = research;
-        // Initialize from saved upgrades
         clicker_default.visClickAmount = save.upgrades.visClickAmount;
+        // Initialize from saved upgrades
+        clicker_default.visClickAmountTimesBought = save.upgrades.visClickAmountTimesBought;
+        clicker_default.crystalClickAmountTimesBought = save.upgrades.crystalClickAmountTimesBought;
+
+        // apply upgrades based on times bought
+        clicker_default.visClickAmount = 1 + clicker_default.visClickAmountTimesBought;
+        clicker_default.crystalClickAmount = 1 + clicker_default.crystalClickAmountTimesBought;
+
+
         // Populate runtime sets from save vectors
         clicker_default.unlocked_nodes = save.unlocked_nodes.into_iter().collect();
         clicker_default.unlocked_recipes = save.unlocked_recipes.into_iter().collect();
@@ -413,9 +420,8 @@ impl Clicker {
                 "secondary_crystals" => self.unlocks.secondary_crystals = true,
                 "tertiary_crystals" => self.unlocks.tertiary_crystals = true,
                 "quaternary_crystals" => self.unlocks.quaternary_crystals = true,
-                "vis_conversion" => self.unlocks.visConversion = true,
+                "vis_click_upgrades" => self.unlocks.visClickUpgrades = true,
                 "auto_clicking" => self.unlocks.autoCliking = true,
-                "advancedRunes" => self.unlocks.advancedRunes = true,
                 _ => {
                     if let Some(rest) = u.strip_prefix("recipe:") {
                         self.unlocked_recipes.insert(rest.to_string());
@@ -1223,11 +1229,3 @@ impl eframe::App for Clicker {
             });
     }
 }
-
-
-
-
-
-
-
-

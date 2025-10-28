@@ -51,20 +51,17 @@
     "colorScheme": ""
   },
   "unlocks": {
-    "advancedRunes": false,
     "secondary_crystals": false,
     "tertiary_crystals": false,
     "quaternary_crystals": false,
-    "visConversion": false,
+    "visClickUpgrades": false,
     "autoCliking": false
-  },
-  "progress": {
-    "totalClicks": 0,
-    "totalVisEarned": 0
   },
   "upgrades": {
     "visClickAmount": 1,
     "crystalClickAmount": 1,
+    "visClickAmountTimesBought": 1,
+    "crystalClickAmountTimesBought": 1,
     "autoClicker": 0
   },
   "unlocked_nodes": [
