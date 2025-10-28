@@ -58,9 +58,10 @@
     "autoCliking": false
   },
   "upgrades": {
+    "maxVis": 50,
     "visClickAmount": 1,
-    "crystalClickAmount": 1,
-    "visClickAmountTimesBought": 1,
+    "crystalClickAmount": 0,
+    "visClickAmountTimesBought": 0,
     "crystalClickAmountTimesBought": 1,
     "autoClicker": 0
   },
