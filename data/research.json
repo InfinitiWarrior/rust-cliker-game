@@ -72,6 +72,18 @@
       "unlocks_nodes": ["resonant_bonds"],
       "unlocks_menu": "Automation"
     },
+        {
+      "id": "resonant_bonds",
+      "name": "Resonant Bonds",
+      "description": "Crystals hum in sympathetic patterns—hinting at autonomous reactions.",
+      "x": 1060,
+      "y": 500,
+      "cost": { "Vis": 180, "aer": 12, "potentia": 10 },
+      "prerequisites": ["lattice_geometry", "echo_resonance"],
+      "unlocks": [],
+      "unlocks_nodes": ["crystalline_paragon"],
+      "unlocks_menu": "Automation"
+    },
     {
       "id": "attunement_channels",
       "name": "Attunement Channels",
@@ -118,7 +130,7 @@
       "prerequisites": ["quaternary_theory", "resonant_bonds"],
       "unlocks": ["advancedRunes"],
       "unlocks_nodes": [],
-      "unlocks_menu": null
+      "unlocks_menu": "Alchemy"
     }
   ],
 
@@ -133,7 +145,7 @@
       "prerequisites": ["primal_lore"],
       "unlocks": [],
       "unlocks_nodes": ["essence_distillation", "solvent_refinement"],
-      "unlocks_menu": "Alchemy"
+      "unlocks_menu": null
     },
     {
       "id": "essence_distillation",
@@ -169,7 +181,7 @@
       "prerequisites": ["essence_distillation"],
       "unlocks": [],
       "unlocks_nodes": ["philosophers_salt"],
-      "unlocks_menu": null
+      "unlocks_menu": "Crafting"
     },
     {
       "id": "metal_baths",
@@ -362,7 +374,7 @@
       "y": 960,
       "cost": { "Vis": 2600, "praecantatio": 16, "alienis": 12, "fabrico": 12 },
       "prerequisites": ["temporal_accumulator", "crystalline_paragon"],
-      "unlocks": ["advancedRunes"],
+      "unlocks": [],
       "unlocks_nodes": [],
       "unlocks_menu": null
     }
@@ -379,7 +391,7 @@
       "prerequisites": ["primal_lore"],
       "unlocks": [],
       "unlocks_nodes": ["carving_glyphs", "tempered_glass"],
-      "unlocks_menu": "Crafting"
+      "unlocks_menu": null
     },
     {
       "id": "carving_glyphs",

@@ -1,5 +1,6 @@
 #![allow(deprecated)]
 #![allow(warnings)]
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 use eframe::egui;
 use std::collections::{HashMap, HashSet};
 use indexmap::IndexMap;
@@ -24,15 +25,12 @@ fn anyhow_to_eframe(e: anyhow::Error) -> eframe::Error {
 // Embedded static data
 const RECIPES_JSON: &str = include_str!("../data/recipes.json");
 const RESEARCH_JSON: &str = include_str!("../data/research.json");
-const DEFAULT_SAVE_JSON: &str = include_str!("../saves/deafault-save.json");
+const DEFAULT_SAVE_JSON: &str = include_str!("../saves/default-save.json");
 
 fn main() -> eframe::Result<()> {
     let save: Savefile = load_or_create_save();
     let recipes: RecipesFile = serde_json::from_str(RECIPES_JSON).map_err(|e| anyhow_to_eframe(e.into()))?;
     let research: ResearchTree = serde_json::from_str(RESEARCH_JSON).map_err(|e| anyhow_to_eframe(e.into()))?;
-
-    println!("Player: {} [{}]", save.player.Charactername, save.player.Title);
-    println!("Level: {}, XP: {}\n", save.player.Level, save.player.Experience);
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -119,7 +117,6 @@ struct Clicker {
     visClickAmount: u32,
     crystalClickAmount: u32,
     runeChance: u32,
-    upgradePrices: UpgradePrices,
     current_tab: MenuTab,
     autoClickInterval: f32,
     autoClickTimer: f32,
@@ -205,13 +202,6 @@ struct RecipesFile {
     crystals: IndexMap<String, IndexMap<String, IndexMap<String, u32>>>,
 }
 
-struct UpgradePrices {
-    vis_capacity: u32,
-    vis_click_amount_cost: u32,
-    vis_conversion_amount_cost: u32,
-    auto_click_interval: u32,
-}
-
 #[derive(Clone)]
 struct SkillNode {
     id: &'static str,
@@ -245,7 +235,7 @@ impl Default for Clicker {
         Self {
             vis: 0,
             maxVis: 50,
-            visClickAmount: 50,
+            visClickAmount: 1,
             crystalClickAmount: 1,
             runeChance: 50,
             crystals,
@@ -260,12 +250,6 @@ impl Default for Clicker {
                 quaternary_crystals: false,
                 visConversion: false,
                 autoCliking: false,
-            },
-            upgradePrices: UpgradePrices {
-                vis_capacity: 100,
-                vis_click_amount_cost: 200,
-                vis_conversion_amount_cost: 300,
-                auto_click_interval: 800,
             },
             current_tab: MenuTab::Gathering,
             // Data-driven research now provides nodes; keep legacy skills empty
