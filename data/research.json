@@ -2,7 +2,7 @@
   "Crystallurgy": [
     {
       "id": "primal_lore",
-      "name": "Primal Lore",
+      "name": "Primary Aspects",
       "description": "Orient yourself with Aer, Aqua, Ignis, Ordo, Perditio, and Terra.",
       "x": 300,
       "y": 600,
@@ -14,19 +14,19 @@
     },
     {
       "id": "flow_basics",
-      "name": "Flow Basics",
+      "name": "Flow Basics placeholder",
       "description": "Channel Vis more cleanly through simple conduits.",
       "x": 520,
       "y": 520,
       "cost": { "Vis": 60, "ordo": 6, "terra": 6 },
       "prerequisites": ["primal_lore"],
       "unlocks": [],
-      "unlocks_nodes": ["lattice_geometry", "echo_resonance"],
+      "unlocks_nodes": ["tertiary_refinement", "industrial_revelution"],
       "unlocks_menu": null
     },
     {
       "id": "rune_synthesis",
-      "name": "Rune Synthesis",
+      "name": "Secondary Aspect Synthesis",
       "description": "Combine primal crystals into secondary forms.",
       "x": 520,
       "y": 680,
@@ -38,7 +38,7 @@
     },
     {
       "id": "shard_husbandry",
-      "name": "Shard Husbandry",
+      "name": "Shard Husbandry placeholder",
       "description": "Basic handling to reduce loss when crafting crystals.",
       "x": 520,
       "y": 820,
@@ -49,44 +49,44 @@
       "unlocks_menu": null
     },
     {
-      "id": "lattice_geometry",
-      "name": "Lattice Geometry",
-      "description": "Understand crystal lattice tiling to hold more charge.",
+      "id": "tertiary_refinement",
+      "name": "Tertiary Refinement",
+      "description": "Gain the knowledge on how to refine secondary crystals into tertiary forms.",
       "x": 780,
       "y": 520,
       "cost": { "Vis": 150, "vitreus": 10, "metallum": 10 },
       "prerequisites": ["flow_basics"],
-      "unlocks": [],
+      "unlocks": ["tertiary_crystals"],
       "unlocks_nodes": ["aura_weaving", "resonant_bonds"],
       "unlocks_menu": null
     },
     {
-      "id": "echo_resonance",
-      "name": "Echo Resonance",
+      "id": "industrial_revelution",
+      "name": "Echo's of Industry",
       "description": "Crystals hum in sympathetic patterns—hinting at autonomous reactions.",
       "x": 780,
       "y": 600,
       "cost": { "Vis": 180, "aer": 12, "potentia": 10 },
       "prerequisites": ["flow_basics"],
-      "unlocks": ["tertiary_crystals"],
+      "unlocks": [],
       "unlocks_nodes": ["resonant_bonds"],
       "unlocks_menu": "Automation"
     },
         {
       "id": "resonant_bonds",
-      "name": "Resonant Bonds",
+      "name": "Resonant Bonds placeholder",
       "description": "Crystals hum in sympathetic patterns—hinting at autonomous reactions.",
       "x": 1060,
       "y": 500,
-      "cost": { "Vis": 180, "aer": 12, "potentia": 10 },
-      "prerequisites": ["lattice_geometry", "echo_resonance"],
+      "cost": { "Vis": 180, "mortuus": 12, "potentia": 10 },
+      "prerequisites": ["tertiary_refinement", "industrial_revelution"],
       "unlocks": [],
       "unlocks_nodes": ["crystalline_paragon"],
-      "unlocks_menu": "Automation"
+      "unlocks_menu": null
     },
     {
       "id": "attunement_channels",
-      "name": "Attunement Channels",
+      "name": "Attunement Channels placeholder",
       "description": "Carve micro-channels to decrease leakage during synthesis.",
       "x": 780,
       "y": 680,
@@ -98,7 +98,7 @@
     },
     {
       "id": "aura_weaving",
-      "name": "Aura Weaving",
+      "name": "Aura Weaving placeholder",
       "description": "Weave local aura into runes, improving secondary yield.",
       "x": 780,
       "y": 780,
@@ -123,7 +123,7 @@
     {
       "id": "crystalline_paragon",
       "name": "Crystalline Paragon",
-      "description": "A pinnacle of crystal craft. All matrices align.",
+      "description": "A pinnacle of crystal craft. But new to alchemy?",
       "x": 1340,
       "y": 720,
       "cost": { "Vis": 900, "auram": 16, "vitium": 16, "fabrico": 12 },
@@ -265,7 +265,7 @@
       "x": 360,
       "y": 960,
       "cost": { "Vis": 70, "metallum": 6, "fabrico": 4 },
-      "prerequisites": ["echo_resonance"],
+      "prerequisites": ["industrial_revelution"],
       "unlocks": [],
       "unlocks_nodes": ["harvester_servo", "rune_sensor_array"],
       "unlocks_menu": "Automation"

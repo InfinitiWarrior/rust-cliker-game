@@ -34,7 +34,7 @@
       "humanus": { "spiritus": 5, "victus": 5 },
       "machina": { "instrumentum": 5, "motus": 5 },
       "praemunio": { "spiritus": 5, "terra": 5 },
-      "sensus": { "sensus": 5, "spiritus": 5 },
+      "sensus": { "aer": 5, "spiritus": 5 },
       "vitium": { "perditio": 5, "praecantatio": 5 }
     }
   }

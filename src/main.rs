@@ -138,6 +138,9 @@ struct Clicker {
     // Recipes unlocked via research: item ids like "gelum", "metallum"
     unlocked_recipes: HashSet<String>,
     upgrades: Upgrades,
+    //prices
+    visClickAmountPrice: u32,
+    crystalClickAmountPrice: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -242,7 +245,8 @@ type ResearchTree = IndexMap<String, Vec<ResearchNode>>; // category -> nodes
 impl Default for Clicker {
     fn default() -> Self {
         let crystals = IndexMap::new();
-        Self {
+
+        let mut state = Self {
             vis: 0,
             visClickAmount: 1,
             visClickAmountTimesBought: 0,
@@ -262,7 +266,6 @@ impl Default for Clicker {
                 autoCliking: false,
             },
             current_tab: MenuTab::Gathering,
-            // Data-driven research now provides nodes; keep legacy skills empty
             skills: Vec::new(),
             cam_offset: egui::vec2(0.0, 0.0),
             cam_zoom: 1.0,
@@ -271,14 +274,19 @@ impl Default for Clicker {
             research: IndexMap::new(),
             current_research_tab: "Crystallography".to_string(),
             unlocked_research_tabs: {
-                let mut s = HashSet::new();
-                s.insert("Crystallography".to_string());
-                s
+                let mut tabs = HashSet::new();      // <-- different name
+                tabs.insert("Crystallography".to_string());
+                tabs
             },
             unlocked_nodes: HashSet::new(),
             unlocked_recipes: HashSet::new(),
             upgrades: Upgrades::default(),
-        }
+            visClickAmountPrice: 0,
+            crystalClickAmountPrice: 0,
+        };
+
+        state.recalc_prices();
+        state
     }
 }
 
@@ -311,6 +319,7 @@ impl Clicker {
     // Initialize from saved upgrades into runtime fields that are still stored separately
     clicker_default.visClickAmountTimesBought = clicker_default.upgrades.visClickAmountTimesBought;
     clicker_default.crystalClickAmountTimesBought = clicker_default.upgrades.crystalClickAmountTimesBought;
+    clicker_default.recalc_prices();
 
     // apply upgrades based on times bought (visClickAmount is derived solely from timesBought)
     clicker_default.visClickAmount = 1 + clicker_default.visClickAmountTimesBought;
@@ -334,6 +343,10 @@ impl Clicker {
         }
         clicker_default
     }
+        fn recalc_prices(&mut self) {
+        self.visClickAmountPrice = 30u32 * self.visClickAmountTimesBought + 20u32;
+        self.crystalClickAmountPrice = 75u32 * self.crystalClickAmountTimesBought + 200u32;
+        }
 
         fn get_crystal_icon(&mut self, ctx: &egui::Context, name: &str) -> Option<&egui::TextureHandle> {
         if self.textures.contains_key(name) {
@@ -884,7 +897,6 @@ impl Clicker {
     fn show_gathering(&mut self, ui: &mut egui::Ui) {
         ui.heading(egui::RichText::new("Gather Menu").color(egui::Color32::WHITE));
         ui.label(egui::RichText::new(format!("Vis: {}/{}", self.vis, self.upgrades.maxVis)).color(egui::Color32::WHITE));
-        // Souls removed
 
         // Clicking button
             if ui.add(styled_button("Conjure resources")).clicked() {
@@ -1076,18 +1088,25 @@ impl Clicker {
         ui.label(egui::RichText::new("Purchase upgrades to enhance clicks or crafting.").color(egui::Color32::WHITE));
 
         // Upgrade 1: Vis Click Amount
-        if ui.add_enabled(self.vis >= 20, styled_button("Upgrade Vis Click Amount (+1) (20 Vis)")).clicked() {
-            // cost is 20 Vis according to the label
-            if safe_subtract(&mut self.vis, 20) {
-                // Increment canonical times-bought and persist into upgrades block
+        if ui.add_enabled(
+            self.vis >= self.visClickAmountPrice,
+            styled_button(&format!(
+                "Upgrade Vis Click Amount (+1) ({} Vis)",
+                self.visClickAmountPrice
+            )),
+        ).clicked() {
+            if safe_subtract(&mut self.vis, self.visClickAmountPrice) {
                 self.visClickAmountTimesBought = self.visClickAmountTimesBought.saturating_add(1);
                 self.upgrades.visClickAmountTimesBought = self.visClickAmountTimesBought;
-                // Derive the click amount from times-bought (keeps a single source of truth)
+
                 let new_amount = 1 + self.visClickAmountTimesBought;
                 self.visClickAmount = new_amount;
                 self.upgrades.visClickAmount = new_amount;
+
+                self.recalc_prices(); // update cost after purchase
             }
         }
+
 
         // Upgrade 2: Vis Capacity
         if ui.add_enabled(self.vis >= 50, styled_button("Upgrade Vis Capacity (+50) (50 Vis)")).clicked() {
@@ -1097,16 +1116,26 @@ impl Clicker {
         }
 
         // Upgrade 3: Crystal Click Amount
-        if ui.add_enabled(self.vis >= 200, styled_button("Upgrade Crystal Click Amount (+1) (200 Vis)")).clicked() {
-            if safe_subtract(&mut self.vis, 200) {
+        if ui.add_enabled(
+            self.vis >= self.crystalClickAmountPrice,
+            styled_button(&format!(
+                "Upgrade Crystal Click Amount (+1) ({} Vis)",
+                self.crystalClickAmountPrice
+            )),
+        ).clicked() {
+            if safe_subtract(&mut self.vis, self.crystalClickAmountPrice) {
                 // Update times-bought and persist
                 self.crystalClickAmountTimesBought = self.crystalClickAmountTimesBought.saturating_add(1);
                 self.upgrades.crystalClickAmountTimesBought = self.crystalClickAmountTimesBought;
+
                 let new_amount = 1 + self.crystalClickAmountTimesBought;
                 self.crystalClickAmount = new_amount;
                 self.upgrades.crystalClickAmount = new_amount;
+
+                self.recalc_prices(); // update price for next purchase
             }
         }
+
 
         // Upgrade 4: Auto Clicking
         if ui.add_enabled(self.unlocks.autoCliking, styled_button("Upgrade Auto Click Interval (-0.5s)")).clicked() {

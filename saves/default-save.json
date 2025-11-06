@@ -62,7 +62,7 @@
     "visClickAmount": 1,
     "crystalClickAmount": 0,
     "visClickAmountTimesBought": 0,
-    "crystalClickAmountTimesBought": 1,
+    "crystalClickAmountTimesBought": 0,
     "autoClicker": 0
   },
   "unlocked_nodes": [
